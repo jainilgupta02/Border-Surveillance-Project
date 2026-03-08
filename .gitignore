@@ -183,3 +183,4 @@ scratch/
 *.bak
 *.orig
 *.draft
+*:Zone.Identifier
