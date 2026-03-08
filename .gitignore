@@ -1,0 +1,185 @@
+# ============================================================
+#   Border-Surveillance-Project — .gitignore
+#   Maintained by: Jainil Gupta (jainilgupta02)
+#   Last updated : 2026
+# ============================================================
+
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+wheels/
+*.whl
+pip-log.txt
+pip-delete-this-directory.txt
+.eggs/
+
+# ─── Virtual Environments ────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+conda-env/
+
+# ─── Jupyter Notebook ────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# ─── ML / AI Model Files ─────────────────────────────────
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.h5
+*.pkl
+*.joblib
+*.model
+*.weights
+runs/
+outputs/
+wandb/
+
+# ─── Data Files (Large) ──────────────────────────────────
+data/raw/
+data/videos/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.zip
+*.tar.gz
+*.tar
+*.rar
+*.7z
+*.csv.gz
+*.parquet
+*.feather
+
+# ─── Small / safe CSVs can be tracked (override below) ───
+# !data/sample/*.csv
+# !data/processed/alerts_sample.csv
+
+# ─── Images (large dataset images — not project assets) ──
+# Roboflow export images
+data/images/train/
+data/images/val/
+data/images/test/
+*.tif
+*.tiff
+
+# ─── Azure / Cloud Secrets ───────────────────────────────
+.azure/
+azure.json
+local.settings.json
+*.env
+.env.*
+secrets/
+credentials/
+serviceAccountKey.json
+
+# ─── Config files with secrets ───────────────────────────
+config.yaml
+config.json
+*.cfg
+!config.example.yaml
+!config.example.json
+
+# ─── Logs ────────────────────────────────────────────────
+logs/
+*.log
+*.out
+*.err
+log/
+
+# ─── OS Files ────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ─── IDEs & Editors ──────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# ─── Testing ─────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+nosetests.xml
+test-results/
+
+# ─── Docker ──────────────────────────────────────────────
+.dockerignore
+docker-compose.override.yml
+
+# ─── Node / Frontend (if Streamlit / React dashboard) ───
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+.nuxt/
+dist/
+.cache/
+
+# ─── Streamlit ───────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ─── Power BI ─────────────────────────────────────────────
+# Track .pbix files (not ignored) - they are important
+# But ignore auto-generated temp files
+*.pbix.lock
+
+# ─── Results & Outputs ───────────────────────────────────
+results/videos/
+results/raw_frames/
+# Keep: results/metrics/, results/screenshots/, results/charts/
+
+# ─── Miscellaneous ───────────────────────────────────────
+tmp/
+temp/
+.tmp/
+scratch/
+*.bak
+*.orig
+*.draft
