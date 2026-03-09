@@ -42,7 +42,7 @@ azure-identity==1.15.0
 azure-keyvault-secrets==4.7.0
 
 # Azure Monitoring
-azure-monitor==0.4.0
+azure-mgmt-monitor==6.0.2
 opencensus-ext-azure==1.1.13
 
 # ========================================
