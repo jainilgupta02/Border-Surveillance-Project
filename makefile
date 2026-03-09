@@ -1,18 +1,20 @@
-.PHONY: setup install clean test
+.PHONY: setup install test clean
 
 setup:
-	@echo "🚀 Setting up project environment..."
-	python3 -m venv venv
+	@if [ ! -d "venv" ]; then \
+		echo "Creating virtual environment..."; \
+		python3 -m venv venv; \
+	fi
 	. venv/bin/activate && pip install --upgrade pip
 	. venv/bin/activate && pip install -r requirements.txt
 	. venv/bin/activate && pip install packaging==23.2
-	@echo "✅ Environment setup complete!"
+	echo "Environment ready"
 
 install:
 	. venv/bin/activate && pip install -r requirements.txt
 
 test:
-	. venv/bin/activate && python -c "import torch, cv2, streamlit; from ultralytics import YOLO; print('Environment OK')"
+	. venv/bin/activate && python testenv.py
 
 clean:
 	rm -rf venv
