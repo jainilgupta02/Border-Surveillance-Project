@@ -21,3 +21,6 @@ clean:
 
 coverage:
 	pytest --cov=src --cov-report=term-missing --cov-report=html
+
+report:
+	pytest --html=report.html --self-contained-html

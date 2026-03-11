@@ -184,3 +184,6 @@ scratch/
 *.orig
 *.draft
 *:Zone.Identifier
+htmlcov/
+.coverage
+.pytest_cache/
