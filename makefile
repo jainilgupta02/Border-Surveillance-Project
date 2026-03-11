@@ -1,4 +1,4 @@
-.PHONY: setup install test clean
+.PHONY: setup install test clean coverage report
 
 setup:
 	@if [ ! -d "venv" ]; then \
