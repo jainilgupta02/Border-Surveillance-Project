@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Border Surveillance System Architecture</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        #canvas {
+            background: white;
+            border: 2px solid #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2E75B6;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI-Powered Border Surveillance System - Architecture</h1>
+    <canvas id="canvas" width="1400" height="1000"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Colors
+        const colors = {
+            primary: '#2E75B6',
+            secondary: '#00B050',
+            warning: '#FFC000',
+            danger: '#C00000',
+            cloud: '#E3F2FD',
+            ai: '#FFF3E0',
+            storage: '#E8F5E9',
+            alert: '#FFEBEE',
+            bg: '#FAFAFA'
+        };
+        
+        // Helper functions
+        function drawBox(x, y, w, h, label, color, icon = '') {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+            
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            if (icon) {
+                ctx.font = '20px Arial';
+                ctx.fillText(icon, x + w/2, y + 25);
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText(label, x + w/2, y + h - 15);
+            } else {
+                ctx.fillText(label, x + w/2, y + h/2 + 5);
+            }
+        }
+        
+        function drawArrow(x1, y1, x2, y2, label = '') {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            
+            // Arrowhead
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - 15 * Math.cos(angle - Math.PI/6), 
+                      y2 - 15 * Math.sin(angle - Math.PI/6));
+            ctx.lineTo(x2 - 15 * Math.cos(angle + Math.PI/6), 
+                      y2 - 15 * Math.sin(angle + Math.PI/6));
+            ctx.closePath();
+            ctx.fillStyle = '#333';
+            ctx.fill();
+            
+            if (label) {
+                const mx = (x1 + x2) / 2;
+                const my = (y1 + y2) / 2;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(mx - 40, my - 10, 80, 20);
+                ctx.fillStyle = colors.primary;
+                ctx.font = '11px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(label, mx, my + 5);
+            }
+        }
+        
+        function drawDashedBox(x, y, w, h, label) {
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            ctx.strokeRect(x, y, w, h);
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#666';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(label, x + 10, y + 25);
+        }
+        
+        // Title
+        ctx.fillStyle = colors.primary;
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('SYSTEM ARCHITECTURE - END-TO-END PIPELINE', 700, 30);
+        
+        // LAYER 1: INPUT
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('1. INPUT LAYER', 50, 80);
+        
+        drawBox(50, 100, 180, 80, 'Video Upload\n(MP4/AVI)', colors.cloud, '📹');
+        drawBox(260, 100, 180, 80, 'CCTV Feed\n(Future)', '#ddd', '📷');
+        
+        // LAYER 2: PREPROCESSING
+        ctx.fillText('2. PREPROCESSING', 50, 250);
+        drawBox(50, 270, 200, 100, 'Frame Extraction\nOpenCV\n1-2 FPS', colors.ai, '🎬');
+        drawBox(280, 270, 200, 100, 'Frame Resize\n640x640\nNormalize', colors.ai, '📐');
+        
+        drawArrow(140, 180, 140, 270, 'video');
+        drawArrow(250, 320, 280, 320, 'frames');
+        
+        // LAYER 3: AI PROCESSING
+        drawDashedBox(520, 60, 380, 550, 'AI PROCESSING LAYER');
+        
+        // Object Detection
+        drawBox(550, 100, 160, 90, 'YOLOv8\nObject Detection', colors.warning, '🤖');
+        ctx.font = '11px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        ctx.fillText('Person, Vehicle, Animal', 630, 200);
+        
+        // Detection Results
+        drawBox(740, 100, 140, 90, 'Bounding Boxes\nConfidence\nClass Labels', '#E8F5E9', '📊');
+        
+        drawArrow(480, 320, 550, 150, 'frames');
+        drawArrow(710, 145, 740, 145);
+        
+        // Anomaly Detection
+        drawBox(550, 250, 160, 100, 'Anomaly Detection\nIsolation Forest', colors.danger, '⚠️');
+        ctx.font = '11px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'center';
+        ctx.fillText('Spatial + Temporal', 630, 360);
+        
+        drawArrow(810, 190, 810, 235);
+        drawArrow(810, 235, 710, 290);
+        
+        // Anomaly Scoring
+        drawBox(740, 250, 140, 100, 'Anomaly Score\n0-100\nRisk Level', '#FFEBEE', '🎯');
+        
+        drawArrow(710, 300, 740, 300);
+        
+        // Decision Logic
+        drawBox(550, 390, 330, 80, 'Alert Decision Logic\nThreshold: >80% Confidence + Anomaly', colors.primary, '⚡');
+        
+        drawArrow(630, 350, 630, 390);
+        drawArrow(810, 350, 810, 410);
+        
+        drawArrow(715, 470, 715, 520);
+        
+        // LAYER 4: CLOUD STORAGE
+        drawDashedBox(930, 60, 420, 320, 'CLOUD STORAGE (Azure)');
+        
+        drawBox(950, 100, 180, 80, 'Blob Storage\nVideos + Frames', colors.cloud, '☁️');
+        drawBox(1150, 100, 180, 80, 'Blob Storage\nAnnotated Images', colors.cloud, '🖼️');
+        
+        drawBox(950, 220, 380, 100, 'Cosmos DB (NoSQL)\nDetections + Anomalies + Alerts', colors.storage, '🗄️');
+        
+        drawArrow(880, 150, 950, 150, 'upload');
+        drawArrow(880, 250, 950, 270, 'metadata');
+        
+        // LAYER 5: ALERTING
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('3. ALERT SYSTEM', 50, 540);
+        
+        drawBox(50, 560, 200, 100, 'Email Alert\nSendGrid', colors.danger, '📧');
+        drawBox(280, 560, 200, 100, 'SMS Alert\n(Optional)', '#ddd', '📱');
+        
+        drawArrow(715, 520, 150, 560, 'trigger');
+        
+        // Alert details
+        ctx.font = '11px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'left';
+        ctx.fillText('• Timestamp', 60, 680);
+        ctx.fillText('• Object Class', 60, 695);
+        ctx.fillText('• Confidence', 60, 710);
+        ctx.fillText('• Image Thumbnail', 60, 725);
+        
+        // LAYER 6: VISUALIZATION
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText('4. VISUALIZATION LAYER', 50, 780);
+        
+        drawBox(50, 800, 200, 120, 'Power BI\nDashboard', colors.primary, '📈');
+        drawBox(280, 800, 200, 120, 'Streamlit\n(Alternative)', '#E3F2FD', '🌐');
+        
+        // Dashboard features
+        ctx.font = '11px Arial';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'left';
+        ctx.fillText('• Detection Timeline', 60, 940);
+        ctx.fillText('• Anomaly Stats', 60, 955);
+        ctx.fillText('• Alert History', 60, 970);
+        
+        drawArrow(1140, 320, 1140, 880);
+        drawArrow(1140, 880, 480, 880);
+        drawArrow(480, 880, 250, 860, 'data');
+        
+        // LAYER 7: DEPLOYMENT
+        drawDashedBox(520, 650, 380, 150, 'SERVERLESS DEPLOYMENT');
+        
+        drawBox(550, 690, 320, 80, 'Azure Functions (Python 3.10)\nBlob Trigger → Process → Store', '#F0F0F0', '⚙️');
+        
+        // Monitoring
+        drawBox(930, 420, 200, 80, 'Application Insights\nMonitoring', colors.cloud, '📊');
+        drawBox(1150, 420, 180, 80, 'Key Vault\nSecrets', colors.storage, '🔐');
+        
+        // Data Flow Legend
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('DATA FLOW:', 950, 570);
+        
+        ctx.strokeStyle = colors.primary;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(1060, 565);
+        ctx.lineTo(1120, 565);
+        ctx.stroke();
+        ctx.font = '12px Arial';
+        ctx.fillText('Main Pipeline', 1130, 570);
+        
+        ctx.strokeStyle = colors.danger;
+        ctx.beginPath();
+        ctx.moveTo(1060, 590);
+        ctx.lineTo(1120, 590);
+        ctx.stroke();
+        ctx.fillText('Alert Trigger', 1130, 595);
+        
+        // Save button
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Download Architecture Diagram';
+        saveBtn.style.cssText = 'margin: 20px auto; display: block; padding: 15px 30px; font-size: 16px; background: #2E75B6; color: white; border: none; border-radius: 5px; cursor: pointer;';
+        saveBtn.onclick = () => {
+            const link = document.createElement('a');
+            link.download = 'Border_Surveillance_Architecture.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        };
+        document.body.appendChild(saveBtn);
+    </script>
+</body>
+</html>
