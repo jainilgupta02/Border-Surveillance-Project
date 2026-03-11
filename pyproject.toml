@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "border-surveillance"
+version = "0.1.0"
+description = "Border surveillance AI pipeline"
+authors = [{name="Jay Gupta"}]
+dependencies = []

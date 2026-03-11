@@ -18,3 +18,6 @@ test:
 
 clean:
 	rm -rf venv
+
+coverage:
+	pytest --cov=src --cov-report=term-missing --cov-report=html
