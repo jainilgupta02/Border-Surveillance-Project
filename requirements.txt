@@ -1,205 +1,103 @@
 # ========================================
-# BORDER SURVEILLANCE AI - REQUIREMENTS
+# BORDER SURVEILLANCE AI — REQUIREMENTS
 # ========================================
 # Python 3.10+ required
-# Last updated: March 2026
-
+# Last updated: April 2026
+#
+# Install:
+#   pip install --upgrade pip
+#   pip install -r requirements.txt
+#
+# For dev tools only (testing, linting):
+#   pip install -r requirements-dev.txt
 # ========================================
-# CORE DEPENDENCIES
-# ========================================
 
-# Computer Vision
-opencv-python==4.8.1.78
-opencv-contrib-python==4.8.1.78
-opencv-python-headless>=4.8,<4.9
 
-# Deep Learning - YOLOv8
+# ── COMPUTER VISION ─────────────────────
+# Pick ONE opencv variant — headless avoids GUI dependencies on servers
+opencv-python-headless>=4.8,<4.10
+Pillow==10.1.0
+imageio==2.33.0
+
+
+# ── OBJECT DETECTION (YOLOv8) ───────────
 ultralytics>=8.2
 torch>=2.2
 torchvision>=0.17
 
-# Machine Learning
+
+# ── MACHINE LEARNING ────────────────────
 scikit-learn==1.3.2
+scipy==1.11.4
 numpy>=1.26
 pandas==2.1.3
-scipy==1.11.4
 
-# ========================================
-# AZURE CLOUD SERVICES
-# ========================================
 
-# Azure Storage
+# ── AZURE CLOUD SERVICES ────────────────
 azure-storage-blob==12.19.0
-azure-storage-file-datalake==12.14.0
-
-# Azure Database
 azure-cosmos==4.5.1
-
-# Azure Functions
-azure-functions==1.18.0
-
-# Azure Identity & Security
 azure-identity==1.15.0
 azure-keyvault-secrets==4.7.0
 
-# Azure Monitoring
-azure-mgmt-monitor==6.0.2
-opencensus-ext-azure==1.1.13
 
-# ========================================
-# EMAIL & ALERTS
-# ========================================
-
-# Email notifications
+# ── EMAIL & ALERTS ──────────────────────
 sendgrid==6.11.0
-
-# Alternative email (SMTP)
 yagmail==0.15.293
 
-# ========================================
-# DATA PROCESSING
-# ========================================
 
-# Image processing
-Pillow==10.1.0
-imageio==2.33.0
-
-# Data manipulation
-matplotlib==3.8.2
-seaborn==0.13.0
-
-# Progress bars
-tqdm==4.66.1
-
-# ========================================
-# WEB & API
-# ========================================
-
-# REST API framework (optional)
-fastapi==0.104.1
-uvicorn==0.24.0
-requests==2.31.0
-
-# ========================================
-# DASHBOARD (Choose one)
-# ========================================
-
-# Option 1: Streamlit (Recommended for beginners)
-packaging==23.2
+# ── DASHBOARD ───────────────────────────
 streamlit==1.29.0
 plotly==5.18.0
 altair==5.2.0
 
-# Option 2: Dash (Alternative)
-# dash==2.14.2
-# dash-bootstrap-components==1.5.0
 
-# ========================================
-# UTILITIES
-# ========================================
+# ── DATA & VISUALISATION ────────────────
+matplotlib==3.8.2
+seaborn==0.13.0
+tqdm==4.66.1
 
-# Environment variables
+
+# ── WEB / API ───────────────────────────
+requests==2.31.0
+fastapi==0.104.1
+uvicorn==0.24.0
+
+
+# ── UTILITIES ───────────────────────────
 python-dotenv==1.0.0
-
-# JSON handling
 jsonschema==4.20.0
-
-# Date/time
 python-dateutil==2.8.2
-
-# File operations
-pathlib2==2.3.7
-
-# Logging
 colorlog==6.8.0
 
-# ========================================
-# TESTING
-# ========================================
 
-# Testing framework
+# ── TESTING ─────────────────────────────
 pytest>=7.4.3
 pytest-cov==4.1.0
 pytest-mock==3.12.0
 pytest-benchmark==5.2.3
 pytest-html>=4.2.0
 
-# Code quality
-flake8==6.1.0
-black==23.12.0
-pylint==3.0.3
 
-# ========================================
-# DEVELOPMENT TOOLS
-# ========================================
-
-# Jupyter notebooks (optional for experimentation)
-jupyter==1.0.0
-notebook==7.0.6
-ipykernel==6.27.1
-
-# Code formatting
-autopep8==2.0.4
-
-# Type checking
-mypy==1.7.1
-
-# ========================================
-# OPTIONAL DEPENDENCIES
-# ========================================
-
-# If using GPU (CUDA 11.8)
-# torch==2.1.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
-# torchvision==0.16.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
-
-# Performance monitoring
-# psutil==5.9.6
-# memory-profiler==0.61.0
-
-# ========================================
-# NOTES FOR INSTALLATION
-# ========================================
-
-# 1. Create virtual environment first:
-#    python -m venv venv
-#    
-# 2. Activate virtual environment:
-#    Windows: venv\Scripts\activate
-#    Linux/Mac: source venv/bin/activate
-#
-# 3. Upgrade pip:
-#    python -m pip install --upgrade pip
-#
-# 4. Install requirements:
-#    pip install -r requirements.txt
-#
-# 5. Verify installation:
-#    python -c "from ultralytics import YOLO; import cv2; print('Setup successful!')"
-#
 # ========================================
 # TROUBLESHOOTING
 # ========================================
-
-# If torch installation fails, install CPU version:
-# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
+#
+# If torch install fails (CPU-only machine):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#
 # If opencv fails on Windows:
-# pip install opencv-python-headless==4.8.1.78
-
+#   pip install opencv-python==4.8.1.78
+#
 # If Azure SDK fails:
-# pip install --upgrade azure-core
-# Then retry: pip install -r requirements.txt
-
+#   pip install --upgrade azure-core && pip install -r requirements.txt
+#
+# GPU (CUDA 11.8) — uncomment if available:
+#   torch==2.1.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+#   torchvision==0.16.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+#
+# Linux system dependencies (if opencv fails):
+#   sudo apt-get install python3-dev libgl1-mesa-glx
+#
+# macOS (if ffmpeg needed):
+#   brew install ffmpeg
 # ========================================
-# PLATFORM-SPECIFIC NOTES
-# ========================================
-
-# macOS: May need to install ffmpeg
-# brew install ffmpeg
-
-# Linux (Ubuntu/Debian): May need system dependencies
-# sudo apt-get update
-# sudo apt-get install python3-dev libgl1-mesa-glx
-
-# Windows: Usually works out of the box
-# Make sure Visual C++ redistributables are installed
