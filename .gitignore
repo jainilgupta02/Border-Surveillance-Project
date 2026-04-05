@@ -7,6 +7,8 @@
 # ─── Python ───────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *$py.class
 *.so
 *.egg
@@ -40,6 +42,7 @@ conda-env/
 
 # ─── Jupyter Notebook ────────────────────────────────────
 .ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
 */.ipynb_checkpoints/*
 *.ipynb_checkpoints
 profile_default/
@@ -163,6 +166,7 @@ dist/
 .cache/
 
 # ─── Streamlit ───────────────────────────────────────────
+.streamlit/
 .streamlit/secrets.toml
 
 # ─── Power BI ─────────────────────────────────────────────
@@ -190,6 +194,7 @@ scratch/
 .pytest_cache/
 # Data folders
 data/
+!data/.gitkeep
 runs/
 logs/
 results/
