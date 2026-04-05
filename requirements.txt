@@ -11,6 +11,7 @@
 # Computer Vision
 opencv-python==4.8.1.78
 opencv-contrib-python==4.8.1.78
+opencv-python-headless>=4.8,<4.9
 
 # Deep Learning - YOLOv8
 ultralytics>=8.2
