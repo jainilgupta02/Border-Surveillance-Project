@@ -214,3 +214,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+# Allow trained models explicitly
+!models/border_yolo.pt
+!models/anomaly_model.pkl
+!yolov8n.pt
