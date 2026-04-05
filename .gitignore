@@ -188,3 +188,24 @@ scratch/
 *.pdf
 .coverage
 .pytest_cache/
+# Data folders
+data/
+runs/
+logs/
+results/
+processed/
+
+# Models
+*.pt
+
+# Env
+.env
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
