@@ -195,7 +195,7 @@ The system accepts a video file or live camera feed, extracts and analyses every
 │                                                                          │
 │  📄 data/alerts/alert_log.json       🗄️  Azure Cosmos DB (alerts)       │
 │  📄 data/results/session_*.json      📦  Azure Blob Storage (sessions)  │
-│  🖼️  data/detections/frame_*.jpg                                         │
+│  🖼️  data/detections/frame_*.jpg                                        │
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │             📊  Streamlit Dashboard  (dashboard/app.py)          │   │
@@ -310,14 +310,18 @@ Border Surveillance Project/
 ├── 📁 docs/                          # Architecture diagrams + presentations
 ├── 📁 overview/                      # Implementation guide and references
 │
-├── yolov8n.pt                        # YOLOv8 nano weights (included)
-├── yolov8s.pt                        # YOLOv8 small weights (included)
+├── 📁 models/                        # Trained model artefacts (committed to repo)
+│   ├── border_yolo.pt                # Custom-trained YOLOv8 border detection model (~22 MB)
+│   └── anomaly_model.pkl            # Trained Isolation Forest anomaly detector (99 KB)
+│
+├── yolov8n.pt                        # YOLOv8 nano base weights (fallback)
+├── yolov8s.pt                        # YOLOv8 small base weights (fallback)
 ├── requirements.txt                  # All Python dependencies
 ├── pyproject.toml                    # Project metadata
 ├── pytest.ini                        # Test runner configuration
 ├── makefile                          # Common task shortcuts
 ├── .env                              # Local credentials (never committed)
-├── .gitignore                        # Excludes data/, venv/, *.pt, .env
+├── .gitignore                        # Excludes data/, venv/, .env
 └── README.md                         # This file
 ```
 
@@ -362,7 +366,23 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> 💡 **YOLOv8 weights** (`yolov8n.pt`) are already included in the repo root. No separate download is needed.
+> 💡 **Dependencies installed.** Now verify your trained models are present before running.
+
+---
+
+### Step 3.5 — Verify Trained Models Are Present
+
+After cloning, confirm the `models/` folder contains both trained artefacts:
+
+```
+models/
+├── border_yolo.pt       ← Custom-trained YOLOv8 border detection model (~22 MB)
+└── anomaly_model.pkl    ← Trained Isolation Forest anomaly detector (99 KB)
+```
+
+> ✅ Both files are committed directly to the repository — **no separate download needed.**
+> The pipeline loads `models/border_yolo.pt` for detection and `models/anomaly_model.pkl` for anomaly scoring automatically.
+> If `border_yolo.pt` is missing, the pipeline falls back gracefully to `yolov8n.pt` (base YOLO weights in repo root).
 
 ---
 
@@ -670,7 +690,6 @@ pytest tests/test_pipeline.py -v
 | **Semester** | 8th Semester |
 | **Duration** | January 2026 — April 2026 (12 weeks · 420 hours) |
 | **Problem Domain** | Border Defence and Surveillance (GTU) |
-
 </div>
 
 **GTU domain requirements fulfilled by this project:**
@@ -712,6 +731,6 @@ This project is distributed under the **MIT License** — see [`LICENSE`](LICENS
 
 **⭐ If this project was useful, please consider starring the repository!**
 
-*Built with ❤️ by Jainil Gupta · Microsoft Elevate Internship 2026 · SAL Institute of Technology Engineering Research*
+*Built with ❤️ by Jainil Gupta · Microsoft Elevate Internship 2026 · SAL Institute of Technology and Engineering Research*
 
 </div>
