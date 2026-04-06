@@ -49,7 +49,7 @@ yagmail==0.15.293
 streamlit==1.29.0
 plotly==5.18.0
 altair==5.2.0
-
+streamlit-autorefresh==1.0.1
 
 # ── DATA & VISUALISATION ────────────────
 matplotlib==3.8.2
