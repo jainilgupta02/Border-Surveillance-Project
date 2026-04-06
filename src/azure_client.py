@@ -76,13 +76,14 @@ class AzureClient:
     def _ensure_containers(self):
         """Create blob containers if they don't exist."""
         for name in [
-            os.getenv("AZURE_STORAGE_CONTAINER_ALERTS",  "alert-frames"),
-            os.getenv("AZURE_STORAGE_CONTAINER_RESULTS", "session-results"),
+            os.getenv("AZURE_STORAGE_CONTAINER_ALERTS",    "alert-frames"),
+            os.getenv("AZURE_STORAGE_CONTAINER_RESULTS",   "session-results"),
+            os.getenv("AZURE_STORAGE_CONTAINER_ANNOTATED", "annotated-frames"),
         ]:
             try:
                 self._blob_client.create_container(name)
             except Exception:
-                pass  # Already exists
+                pass  # Already exists — this is expected
 
     def upload_frame(self, image_path: str, alert_id: str) -> bool:
         """Upload an annotated alert frame to Blob Storage."""
@@ -169,6 +170,61 @@ class AzureClient:
         except Exception as exc:
             logger.warning("Cosmos DB query failed: %s", exc)
             return []
+
+
+    def health_check(self) -> dict:
+        """
+        Return Azure connectivity status.
+        Used by dashboard sidebar to show CONNECTED / LOCAL ONLY indicators.
+        Safe to call at any time — never raises.
+        """
+        blob_ok = cosmos_ok = False
+        if self._blob_client:
+            try:
+                next(self._blob_client.list_containers(max_results=1), None)
+                blob_ok = True
+            except Exception:
+                pass
+        if self._alerts_container:
+            try:
+                list(self._alerts_container.query_items(
+                    "SELECT VALUE 1",
+                    enable_cross_partition_query=True,
+                ))
+                cosmos_ok = True
+            except Exception:
+                pass
+        return {
+            "blob":    blob_ok,
+            "cosmos":  cosmos_ok,
+            "enabled": self.enabled,
+        }
+
+    def get_alert_stats(self) -> dict:
+        """
+        Aggregate alert counts from Cosmos DB grouped by priority.
+        Used by dashboard KPI cards.
+        Returns {} on error or if Azure is disabled.
+        """
+        if not self.enabled or self._alerts_container is None:
+            return {}
+        try:
+            rows = list(self._alerts_container.query_items(
+                query=(
+                    "SELECT c.priority, COUNT(1) AS cnt "
+                    "FROM c GROUP BY c.priority"
+                ),
+                enable_cross_partition_query=True,
+            ))
+            by_priority = {r["priority"]: r["cnt"] for r in rows}
+            return {
+                "total":       sum(by_priority.values()),
+                "by_priority": by_priority,
+                "source":      "cosmos_db",
+            }
+        except Exception as exc:
+            logger.warning("Cosmos DB stats query failed: %s", exc)
+            return {}
 
 
 # Singleton — import and reuse across modules

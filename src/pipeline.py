@@ -533,8 +533,59 @@ class BorderSurveillancePipeline:
             self.session.alerts_raised  += 1
             self.session.alert_records.append(alert.to_dict())
 
+            # ── Azure: save + upload alert frame (HIGH and CRITICAL only)
+            # NOTE: azure.save_alert() is already called inside
+            #       alert_manager._log_alert() — no need to duplicate here.
+            if alert.priority in ("CRITICAL", "HIGH"):
+                self._upload_alert_frame(frame_item, fr_result, alert)
+
         # ── Progress log ──────────────────────────────────────────────
         self._log_progress(frame_id, fr_dict, anomaly_result, alert)
+
+    def _upload_alert_frame(self, frame_item: dict,
+                            fr_result,
+                            alert) -> None:
+        """
+        Save the annotated alert frame locally AND upload to Azure Blob Storage.
+
+        Only called for HIGH and CRITICAL alerts — keeps storage lean.
+        Local file is always written so the dashboard can display it.
+        Azure upload is attempted only if azure.enabled is True.
+        """
+        import cv2 as _cv2
+        import numpy as np
+
+        try:
+            frame = frame_item["frame"]
+            if frame.dtype != np.uint8:
+                frame = (frame * 255).clip(0, 255).astype(np.uint8)
+
+            annotated = self._detector.annotate_frame(frame, fr_result)
+
+            # ── Save locally ──────────────────────────────────────────
+            os.makedirs(self.config.annotated_dir, exist_ok=True)
+            local_path = os.path.join(
+                self.config.annotated_dir,
+                f"alert_{alert.alert_id}_frame_{fr_result.frame_id:06d}.jpg",
+            )
+            _cv2.imwrite(local_path, annotated)
+            logger.debug("Alert frame saved → %s", local_path)
+
+            # ── Upload to Azure Blob Storage ──────────────────────────
+            try:
+                from azure_client import azure as _azure
+                if _azure.enabled:
+                    ok = _azure.upload_frame(local_path, alert.alert_id)
+                    if ok:
+                        logger.info(
+                            "[%s] Frame %d → Azure alert-frames/",
+                            alert.priority, fr_result.frame_id,
+                        )
+            except Exception as az_exc:
+                logger.debug("Azure frame upload skipped: %s", az_exc)
+
+        except Exception as exc:
+            logger.warning("_upload_alert_frame failed: %s", exc)
 
     def _finish(self) -> None:
         """Called after the main loop — save results and print summary."""
@@ -549,14 +600,18 @@ class BorderSurveillancePipeline:
             if key != "alerts":
                 logger.info("  %-28s %s", key, val)
 
-        # -- Azure: upload session results --
+        # ── Azure: upload session results JSON to Blob Storage ───────
         try:
-            from azure_client import azure
-            if azure.enabled:
-                azure.upload_session_results(summary)
-                logger.info("Session results synced to Azure Blob Storage")
-        except Exception:
-            pass
+            from azure_client import azure as _azure
+            if _azure.enabled:
+                _azure.upload_session_results(summary)
+                logger.info(
+                    "Session JSON uploaded → Azure session-results/ ✅"
+                )
+            else:
+                logger.info("Azure not enabled — session saved locally only")
+        except Exception as exc:
+            logger.warning("Azure session upload skipped: %s", exc)
 
         # Alert manager summary
         mgr_summary = self._alert_manager.get_summary()
