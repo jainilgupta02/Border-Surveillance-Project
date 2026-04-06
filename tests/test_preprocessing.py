@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 import pytest
 
-from src.preprocessing import (
+from preprocessing import (
     SUPPORTED_FORMATS,
     YOLO_SIZE,
     compute_optical_flow,

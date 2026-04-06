@@ -261,13 +261,16 @@ class BorderDetector:
         """
         path = self.model_path
         if not os.path.exists(path):
-            raise FileNotFoundError(
-                f"Model not found: '{path}'\n"
-                f"Run: cp models/runs/border_surveillance_v9_finetune/weights/best.pt models/border_yolo.pt"
+            fallback = "yolov8n.pt"
+            logger.warning(
+                "Custom model not found at '%s'. Falling back to '%s'.", path, fallback
             )
+            path = fallback
+
         try:
             if YOLO is None:
                 raise RuntimeError("ultralytics is not installed.")
+
             model = YOLO(path)
             logger.info(
                 "Loaded model: %s  |  device: %s  |  conf: %.2f",
