@@ -40,7 +40,7 @@
 <br/>
 
 ```
-  Live Demo Result (April 2026):  2 persons + 1 vehicle detected · 78% avg confidence · 18-second end-to-end workflow
+  Custom YOLOv8 Model (v2 Balanced):  7 classes · mAP50 47.8% · mAP50-95 28.5% · 114.7ms/frame CPU inference
 ```
 
 </div>
@@ -116,29 +116,47 @@ The system accepts a video file or live camera feed, extracts and analyses every
 <td width="50%" valign="top">
 
 ### 🔍 Object Detection
-- YOLOv8 inference on every extracted frame
+- Custom-trained YOLOv8n model on balanced 7-class border surveillance dataset (DOTA + xView + VEDAI)
 - Detects: `person`, `vehicle`, `crowd`, `military_vehicle`, `aircraft`, `ship`, `suspicious_object`
 - Structured per-detection output with class, confidence, bounding box, and threat tags
 - `has_high` and `has_critical` flags per frame for downstream prioritisation
 
-### 🧠 Anomaly Detection
+### 🧠 Anomaly Detection (Dual ML Pipeline)
+- **Isolation Forest** — unsupervised anomaly scoring on 10-dimensional behavioural features
+- **Random Forest Classifier** — supervised threat classification (CRITICAL/HIGH/MEDIUM/LOW) trained from anomaly labels
 - Baseline learned from first 30 frames (configurable)
-- Isolation Forest scoring on low-dimensional behavioural features
-- Features include detection count, class diversity, confidence stats, motion score, object location, and suspicious class presence
+- Features: detection count, class diversity, confidence stats, motion score, object location, spatial distribution, suspicious class presence
 - Frame-level severity: `normal` → `high` → `critical`
+
+### 🗺️ Zone-Based Intrusion Detection
+- Three configurable surveillance zones: 🔴 Border (RESTRICTED) · 🟠 Buffer (HIGH) · 🟢 Observation (MEDIUM)
+- Ray-casting point-in-polygon spatial checks on every detection
+- High-threat class boosting (person/military_vehicle in restricted zone → instant CRITICAL)
+- Night activity boost (21:00–05:00 → 1.3× risk multiplier)
+- Composite zone risk scoring (0–1) with crowding penalty
 
 </td>
 <td width="50%" valign="top">
+
+### ⏱️ Temporal Video Intelligence
+- Multi-frame analysis across a sliding window of consecutive frames
+- IoU-based lightweight object tracker (no GPU dependency)
+- **5 temporal detectors**: sudden appearance, crowd buildup, loitering, approach trajectory, coordinated movement
+- Trajectory analysis: objects moving toward the border flagged as CRITICAL
+- Speed estimation and object persistence scoring
 
 ### 🚨 Smart Alert System
 - Four priority levels: 🔴 `CRITICAL` / 🟠 `HIGH` / 🟡 `MEDIUM` / 🟢 `LOW`
 - Rolling JSON alert log written locally on every run
 - Cooldown logic to suppress duplicate notifications
+- Zone + temporal + anomaly reasons merged into unified alert explanations
 - Email notifications via SendGrid for HIGH and CRITICAL alerts
 - Azure Cosmos DB persistence when credentials are configured
 
 ### 📊 Operational Dashboard
-- Streamlit command-centre interface
+- Streamlit command-centre interface with multi-page layout
+- 🗺️ **Enhanced Analysis page** — zone violations, temporal alerts, risk timelines, object tracking
+- 🌍 **Threat Heatmap** — geographic threat map of Indian border zones using Plotly Mapbox
 - Auto-refreshing view of alerts, sessions, and trends
 - Manual email notification trigger from the UI
 - Falls back to demo data when no live pipeline output is present
@@ -167,25 +185,31 @@ The system accepts a video file or live camera feed, extracts and analyses every
 │                     OBJECT DETECTION                  [src/detector.py]  │
 │                                                                          │
 │   ┌────────────────────────────────────────────────────────────────────┐ │
-│   │   YOLOv8 Inference                                                 │ │
-│   │   Detects → person │ vehicle │ crowd │ military_vehicle │ aircraft │ │ 
+│   │   Custom YOLOv8n (border_v2_balanced) — 30 epochs, 7 classes       │ │
+│   │   Detects → person │ vehicle │ crowd │ military_vehicle │ aircraft │ │
 │   │             ship │ suspicious_object                               │ │
 │   │   Output → class · confidence · bbox · threat_tag · flags          │ │
 │   └────────────────────────────────────────────────────────────────────┘ │
 └────────────────────────────┬─────────────────────────────────────────────┘
                              ↓
-┌──────────────────────────────────────────────────────────────────────────┐
-│                     ANOMALY DETECTION                 [src/anomaly.py]   │
-│                                                                          │
-│   Phase 1: Baseline (frames 1–30) → learn normal behaviour               │
-│   Phase 2: Live scoring → Isolation Forest on behavioural features       │
-│   Output  → anomaly score │ severity │ human-readable reasons            │
-└────────────────────────────┬─────────────────────────────────────────────┘
-                             ↓
+              ┌──────────────┼──────────────┐
+              ↓              ↓              ↓
+┌─────────────────────┐ ┌──────────────────────┐ ┌────────────────────────┐
+│  🗺️ ZONE ANALYSIS   │ │ ⏱️ TEMPORAL ANALYSIS  │ │ 🧠 ANOMALY DETECTION  │
+│ [zone_analyzer.py]  │ │[temporal_analyzer.py] │ │ [anomaly.py]           │
+│                     │ │                      │ │                        │
+│ • 3 border zones    │ │ • IoU object tracker │ │ • Isolation Forest     │
+│ • Intrusion detect  │ │ • Approach trajectory│ │ • Random Forest        │
+│ • Night boost       │ │ • Crowd buildup      │ │ • Rule-based fallback  │
+│ • Risk scoring      │ │ • Loitering detect   │ │ • 10-dim features      │
+│                     │ │ • Coordinated move   │ │                        │
+└────────┬────────────┘ └──────────┬───────────┘ └───────────┬────────────┘
+         └──────────────┬──────────┘                         │
+                        ↓                                    ↓
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                    ALERT MANAGEMENT              [src/alert_manager.py]  │
 │                                                                          │
-│   Score mapping →  🔴 CRITICAL  │  🟠 HIGH  │  🟡 MEDIUM  │  🟢 LOW    │
+│   Zone + Temporal + Anomaly → 🔴 CRITICAL │ 🟠 HIGH │ 🟡 MED │ 🟢 LOW │
 │   Rolling JSON log  │  Cooldown dedup  │  SendGrid email notifications   │
 │   Azure Cosmos DB write (if configured)                                  │
 └────────────────────────────┬─────────────────────────────────────────────┘
@@ -195,12 +219,13 @@ The system accepts a video file or live camera feed, extracts and analyses every
 │                                                                          │
 │  📄 data/alerts/alert_log.json       🗄️  Azure Cosmos DB (alerts)       │
 │  📄 data/results/session_*.json      📦  Azure Blob Storage (sessions)  │
-│  🖼️  data/detections/frame_*.jpg                                        │
+│  🖼️  data/detections/frame_*.jpg     📄  enhanced_analysis.json         │
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │             📊  Streamlit Dashboard  (dashboard/app.py)          │   │
 │  │  Alert feed │ Priority chart │ Session summaries │ Trend lines   │    │
-│  │  Anomaly overview │ Manual notify button │ Auto-refresh          │    │
+│  │  Anomaly overview │ Manual notify │ Auto-refresh │ Threat Map    │    │
+│  │  🗺️ Enhanced Analysis: Zone map │ Temporal alerts │ Tracking     │    │
 │  └──────────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -229,13 +254,27 @@ The pipeline accepts either a video file path or a live camera index. Frames are
 | `motion_score` | Optical-flow estimated motion intensity |
 | `suspicious_presence` | Binary flag for suspicious class in frame |
 
-Frames are classified as `normal`, `high`, or `critical` with human-readable anomaly reasons attached.
+Frames are classified as `normal`, `high`, or `critical` with human-readable anomaly reasons attached. A **Random Forest Classifier** trained from anomaly labels provides supervised threat classification alongside the unsupervised Isolation Forest.
+
+### 3️⃣.a Zone-Based Intrusion Detection *(Enhanced Pipeline)*
+`ZoneAnalyzer` divides the camera field of view into three configurable zones — Border (RESTRICTED), Buffer (HIGH), and Observation (MEDIUM). Every detection's normalised centre coordinate is tested against zone polygons using ray-casting. Detections of high-threat classes (person, military_vehicle, suspicious_object) in the RESTRICTED zone trigger immediate CRITICAL alerts. A night activity boost multiplies zone risk during 21:00–05:00 hours.
+
+### 3️⃣.b Temporal Video Intelligence *(Enhanced Pipeline)*
+`TemporalAnalyzer` maintains a sliding window of the last 30 frames and analyses detection patterns across time. It tracks objects across frames using lightweight IoU matching and runs five temporal detectors:
+
+| Detector | What It Catches | Severity |
+|----------|----------------|----------|
+| ⚡ Sudden Appearance | Empty scene → 5+ new detections | HIGH |
+| 👥 Crowd Buildup | Gradual increase in person count | HIGH |
+| 🚶 Loitering | Object stationary in one spot for 10+ frames | MEDIUM |
+| ↗️ Approach Trajectory | Objects moving toward the border zone | CRITICAL |
+| 🔗 Coordinated Movement | 3+ objects moving in the same direction | HIGH |
 
 ### 4️⃣ Alert Generation
-`AlertManager` maps anomaly output to operational priority levels. HIGH and CRITICAL alerts trigger email notifications subject to a configurable cooldown window. Every non-normal alert is appended to the rolling JSON log. Alert records are optionally written to Azure Cosmos DB.
+`AlertManager` merges anomaly scores, zone violations, and temporal alerts into unified priority levels. Zone intrusions and approach trajectories can upgrade alert severity beyond what anomaly scoring alone would assign. HIGH and CRITICAL alerts trigger email notifications subject to a configurable cooldown window. Every non-normal alert is appended to the rolling JSON log. Alert records are optionally written to Azure Cosmos DB.
 
 ### 5️⃣ Storage and Monitoring
-Session summaries are saved as timestamped JSON files. When Azure credentials are present, session results are uploaded to Blob Storage and alerts are written to Cosmos DB. The Streamlit dashboard reads local output files directly and auto-refreshes to show the latest operational state.
+Session summaries are saved as timestamped JSON files. The enhanced pipeline additionally writes `enhanced_analysis.json` with per-frame zone risk, temporal risk, and object tracking data for the dashboard. When Azure credentials are present, session results are uploaded to Blob Storage and alerts are written to Cosmos DB. The Streamlit dashboard reads local output files directly and auto-refreshes to show the latest operational state.
 
 ---
 
@@ -249,7 +288,9 @@ Session summaries are saved as timestamped JSON files. When Azure credentials ar
 | **Object Detection** | YOLOv8 (Ultralytics) | Real-time frame inference |
 | **Deep Learning** | PyTorch 2.x | Model backend |
 | **Computer Vision** | OpenCV 4.x | Video I/O, frame processing, optical flow |
-| **Anomaly Detection** | scikit-learn (Isolation Forest) | Behavioural scoring |
+| **Anomaly Detection** | scikit-learn (Isolation Forest + Random Forest) | Unsupervised anomaly scoring + supervised threat classification |
+| **Zone Analysis** | NumPy (ray-casting PIP) | Spatial intrusion detection across border zones |
+| **Temporal Analysis** | NumPy + IoU tracker | Multi-frame pattern detection and object tracking |
 | **Data** | NumPy, Pandas | Feature arrays and session analytics |
 | **Dashboard** | Streamlit + Plotly | Operational monitoring UI |
 | **Alerting** | SendGrid | Email notifications |
@@ -268,14 +309,18 @@ Session summaries are saved as timestamped JSON files. When Azure credentials ar
 Border Surveillance Project/
 │
 ├── 📁 src/                           # Core application modules
-│   ├── pipeline.py                   # Main orchestration entry point
+│   ├── pipeline.py                   # Main pipeline with zone + temporal intelligence
 │   ├── detector.py                   # YOLOv8 wrapper + structured detections
-│   ├── anomaly.py                    # Baseline learning + Isolation Forest scoring
+│   ├── anomaly.py                    # Dual ML: Isolation Forest + Random Forest scoring
+│   ├── zone_analyzer.py              # Zone-based intrusion detection (3 border zones)
+│   ├── temporal_analyzer.py          # Multi-frame temporal video analysis + IoU tracker
 │   ├── alert_manager.py              # Priority assignment, logging, email, cooldown
 │   └── azure_client.py              # Blob Storage + Cosmos DB integration
 │
 ├── 📁 dashboard/
-│   ├── app.py                        # Streamlit command-centre dashboard
+│   ├── app.py                        # Streamlit command-centre dashboard (main page)
+│   ├── pages/
+│   │   └── 1_🗺️_Enhanced_Analysis.py # Zone + temporal analysis dashboard page
 │   └── Border Defence AI logo.png    # Project branding asset
 │
 ├── 📁 scripts/                       # Utility and dataset preparation scripts
@@ -293,17 +338,19 @@ Border Surveillance Project/
 │
 ├── 📁 data/                          # Runtime data (gitignored — not in repo)
 │   ├── alerts/                       # alert_log.json — rolling alert output
-│   ├── results/                      # session_*.json — per-run summaries
+│   ├── results/                      # session_*.json + enhanced_analysis.json
 │   ├── test_videos/                  # Sample videos for local runs
-│   ├── processed/                    # Preprocessed training-ready data
+│   ├── processed/                    # Preprocessed training-ready data (7 classes)
 │   ├── annotations/                  # Dataset annotation files
-│   ├── raw/                          # Source datasets
+│   ├── raw/                          # Source datasets (DOTA, xView, VEDAI)
 │   └── logs/                         # Pipeline runtime logs
 │
-├── 📁 tests/                         # Automated test suite
+├── 📁 tests/                         # Automated test suite (285 tests)
 │   ├── test_detector.py
 │   ├── test_anomaly_and_alert.py
-│   └── test_pipeline.py
+│   ├── test_pipeline.py
+│   ├── test_zone_analyzer.py         # 23 tests — zone intrusion detection
+│   └── test_temporal_analyzer.py     # 28 tests — temporal pattern detection
 │
 ├── 📁 models/                        # YOLO weights + anomaly model artefacts
 ├── 📁 notebooks/                     # EDA and experimentation notebooks
@@ -434,6 +481,7 @@ python src/pipeline.py \
   --video data/test_videos/dota_aerial_test.mp4 \
   --frame-skip 3 \
   --save-frames \
+  --temporal-window 30 \
   --results-dir data/results \
   --annotated-dir data/detections
 ```
@@ -444,15 +492,18 @@ python src/pipeline.py \
 python src/pipeline.py --camera 0
 ```
 
-**Expected terminal output:**
+**Expected terminal output (enhanced pipeline):**
 
 ```
 ✅ Preprocessing complete   — frames extracted and resized to 640×640
 ✅ Detection complete       — structured detections logged per frame
-✅ Anomaly scoring complete — Isolation Forest scored all frames
-✅ Alerts generated         — priority levels assigned and logged
-✅ Session saved            — data/results/session_<source>_<timestamp>.json
+✅ Zone analysis complete   — intrusion detection across 3 border zones
+✅ Temporal analysis done   — object tracking + 5 temporal detectors
+✅ Anomaly scoring complete — Isolation Forest + Random Forest scored all frames
+✅ Alerts generated         — zone + temporal + anomaly priority levels assigned
+✅ Session saved            — data/results/enhanced_session_<source>_<timestamp>.json
 ✅ Alert log written        — data/alerts/alert_log.json
+✅ Enhanced log written     — data/results/enhanced_analysis.json
 ```
 
 ---
@@ -484,6 +535,7 @@ pytest tests --cov=src --cov-report=html
 
 | Command | Purpose |
 |---------|---------|
+| `python src/pipeline.py --video <path>` | Full pipeline with zone + temporal intelligence |
 | `python scripts/main.py` | Minimal single-video detector demo |
 | `python scripts/pilot.py data/test_videos/dota_aerial_test.mp4` | Manual integration check across all modules |
 | `python scripts/smoke_test.py` | Fast pipeline smoke test |
@@ -536,7 +588,9 @@ The alerting layer is designed for operational triage, not raw event dumping.
 
 ## 📊 Dashboard
 
-`dashboard/app.py` provides a command-centre style operational view over all pipeline output.
+The dashboard uses Streamlit's multi-page layout. Run `streamlit run dashboard/app.py` — all pages appear in the sidebar automatically.
+
+### Page 1: Command Centre (`app.py`)
 
 | Panel | What You See |
 |-------|-------------|
@@ -545,43 +599,87 @@ The alerting layer is designed for operational triage, not raw event dumping.
 | 📈 **Anomaly Trend** | Score-over-time chart for the most recent session |
 | 📦 **Session Summaries** | Per-run statistics read from `data/results/session_*.json` |
 | 🔍 **Detection Activity** | Detection count and class distribution trends |
+| 🌍 **Threat Heatmap** | Geographic threat map of Indian border zones (Plotly Mapbox) |
 | 🔔 **Notification Status** | SendGrid readiness indicator + manual email trigger button |
+
+### Page 2: Enhanced Analysis (`pages/1_🗺️_Enhanced_Analysis.py`)
+
+| Panel | What You See |
+|-------|-------------|
+| 📈 **Risk Score Timeline** | Zone risk + temporal risk over time (dual chart) |
+| 🗺️ **Zone Violations** | Bar chart of intrusions per zone (border / buffer / observation) |
+| ⏱️ **Temporal Alert Types** | Donut chart of 5 temporal detector categories |
+| 🗺️ **Zone Severity Heatmap** | Frame-by-frame zone severity scatter plot |
+| 🎯 **Object Tracking** | Active tracked objects over time |
+| 📊 **Detection Trend** | Rolling detection count slope (positive = increasing activity) |
 
 **Primary data inputs:**
 
 ```
 data/alerts/alert_log.json
 data/results/session_*.json
+data/results/enhanced_analysis.json     ← zone + temporal data from enhanced pipeline
 data/detections/anomaly_summary.json    ← optional
 ```
 
-> If no live pipeline output is present, the dashboard automatically falls back to demo data so the interface always remains fully functional and reviewable.
+> If no live pipeline output is present, both dashboard pages automatically fall back to demo data so the interface always remains fully functional and reviewable.
 
 ---
 
 ## 🧩 Key Modules
 
 ### `src/pipeline.py`
-Main orchestration layer. Connects preprocessing → detection → anomaly scoring → alert management in a single runtime session. Saves session summaries and optionally annotated frames, then uploads to Azure when configured.
+Main orchestration layer with zone + temporal intelligence. Connects preprocessing → detection → zone analysis → temporal analysis → anomaly scoring → alert management in a single runtime session. Adds zone intrusion detection and temporal video analysis as parallel processing stages alongside anomaly scoring. Accepts CLI arguments including `--temporal-window`, `--no-zones`, and `--no-temporal` flags. Saves session summaries and optionally annotated frames, then uploads to Azure when configured.
 
 ### `src/detector.py`
-YOLOv8 wrapper. Loads the model once per session and reuses it across all frames. Converts raw model output into structured `Detection` objects carrying class, confidence, bbox, threat tags, and frame-level `has_high` / `has_critical` flags.
+YOLOv8 wrapper. Loads the custom-trained `border_yolo.pt` model once per session and reuses it across all frames. Converts raw model output into structured `Detection` objects carrying class, confidence, bbox, threat tags, and frame-level `has_high` / `has_critical` flags.
 
 ### `src/anomaly.py`
-Two-phase runtime: baseline collection from the first 30 frames, then Isolation Forest live scoring for all subsequent frames. Produces interpretable anomaly reasons and severity classifications attached to each scored frame result.
+Dual ML pipeline: **Isolation Forest** for unsupervised anomaly scoring and **Random Forest Classifier** for supervised threat classification. Baseline collected from the first 30 frames, then live scoring on 10-dimensional behavioural features. Produces interpretable anomaly reasons and severity classifications attached to each scored frame result.
+
+### `src/zone_analyzer.py`
+Spatial intelligence layer. Defines three configurable border surveillance zones (RESTRICTED, BUFFER, OBSERVATION) as normalised polygons. Every detection is tested against zone boundaries using ray-casting point-in-polygon. High-threat classes in restricted zones trigger immediate CRITICAL alerts. Supports night activity boosting and composite risk scoring.
+
+### `src/temporal_analyzer.py`
+Multi-frame video analysis engine. Maintains a sliding window of recent frames and runs five temporal detectors: sudden appearance, crowd buildup, loitering, approach trajectory, and coordinated movement. Includes a lightweight IoU-based object tracker that associates detections across frames without GPU dependency.
 
 ### `src/alert_manager.py`
-Priority assignment from anomaly level and motion score. Maintains the rolling JSON alert log with append-only writes. Sends SendGrid notifications for HIGH+ events within cooldown constraints. Writes alert records to Cosmos DB via `azure_client`.
+Priority assignment from anomaly level, zone violations, and temporal alerts. Maintains the rolling JSON alert log with append-only writes. Sends SendGrid notifications for HIGH+ events within cooldown constraints. Writes alert records to Cosmos DB via `azure_client`.
 
 ### `src/azure_client.py`
 Lazy initialisation — Azure clients are created only when valid credentials are present. Uploads session JSON files to Blob Storage. Writes alert documents to Cosmos DB. Falls back gracefully to a no-op if Azure is unavailable, with no pipeline interruption.
 
 ### `dashboard/app.py`
-Reads `alert_log.json` and `session_*.json` from local `data/` directories. Auto-refreshes on a configurable interval. Renders alert feed, priority charts, session summaries, anomaly trend, and manual notification control.
+Main dashboard page. Reads `alert_log.json` and `session_*.json` from local `data/` directories. Auto-refreshes on a configurable interval. Renders alert feed, priority charts, session summaries, anomaly trend, geographic threat heatmap, and manual notification control.
+
+### `dashboard/pages/1_🗺️_Enhanced_Analysis.py`
+Enhanced analysis dashboard page (auto-detected by Streamlit multi-page system). Visualises zone intrusion data, temporal alert breakdowns, risk score timelines, object tracking counts, and detection trends. Falls back to demo data when no enhanced pipeline output is present.
 
 ---
 
 ## 🧪 Sample Output & Results
+
+### Custom YOLOv8 Model Performance (v2 Balanced — 30 Epochs)
+
+<div align="center">
+
+| Class | Images | Instances | Precision | Recall | mAP50 | mAP50-95 |
+|-------|--------|-----------|-----------|--------|-------|----------|
+| **All** | **1685** | **30195** | **0.701** | **0.457** | **0.478** | **0.285** |
+| person | 603 | 10387 | 0.463 | 0.283 | 0.293 | 0.096 |
+| vehicle | 999 | 8170 | 0.327 | 0.398 | 0.270 | 0.155 |
+| crowd | 24 | 149 | 0.713 | 0.367 | 0.483 | 0.197 |
+| military_vehicle | 4 | 8 | 1.000 | 0.000 | 0.000 | 0.000 |
+| aircraft | 425 | 2353 | 0.831 | 0.622 | 0.668 | 0.479 |
+| ship | 527 | 8169 | 0.780 | 0.821 | 0.870 | 0.561 |
+| suspicious_object | 116 | 959 | 0.791 | 0.706 | 0.763 | 0.505 |
+
+</div>
+
+> **Training config:** YOLOv8n · 30 epochs · 640×640 · CPU (12th Gen Intel i5-12350U) · Balanced v2 dataset (DOTA + xView + VEDAI)
+> **Inference speed:** 1.4ms preprocess · 114.7ms inference · 1.4ms postprocess per image
+
+---
 
 **Example alert record written to `data/alerts/alert_log.json`:**
 
@@ -589,52 +687,51 @@ Reads `alert_log.json` and `session_*.json` from local `data/` directories. Auto
 {
   "alert_id": "alert_1712312345678",
   "frame_id": 42,
-  "priority": "HIGH",
-  "alert_level": "high",
+  "priority": "CRITICAL",
+  "alert_level": "critical",
   "anomaly_score": -0.1042,
   "detection_count": 7,
   "motion_score": 10.4,
-  "reasons": ["crowd gathering detected"],
+  "reasons": [
+    "person (85%) detected in Border Zone (Restricted) [HIGH THREAT]",
+    "Border approach detected: 2 object(s) moving toward border zone",
+    "crowd gathering detected"
+  ],
   "notified": true
 }
 ```
 
-**Example session summary written to `data/results/session_dota_aerial_test_20260405_144229.json`:**
+**Example enhanced session summary:**
 
 ```json
 {
   "source": "dota_aerial_test.mp4",
-  "timestamp": "2026-04-05T14:42:29",
+  "pipeline_type": "enhanced",
   "total_frames": 124,
   "frames_scored": 94,
-  "critical_alerts": 1,
-  "high_alerts": 3,
-  "medium_alerts": 8,
-  "low_alerts": 82,
-  "avg_anomaly_score": -0.073,
-  "avg_confidence": 0.78,
-  "azure_uploaded": true
+  "total_detections": 2351,
+  "alerts_raised": 38,
+  "zone_analysis_enabled": true,
+  "total_zone_violations": 34,
+  "zone_critical_count": 8,
+  "temporal_analysis_enabled": true,
+  "total_temporal_alerts": 12,
+  "temporal_approach_count": 2,
+  "avg_inference_ms": 114.7,
+  "avg_zone_ms": 0.8,
+  "avg_temporal_ms": 1.2
 }
 ```
 
-**Typical output file set after a single pipeline run:**
+**Typical output file set after an enhanced pipeline run:**
 
 ```
 data/alerts/alert_log.json
-data/results/session_<source>_<timestamp>.json
+data/results/enhanced_session_<source>_<timestamp>.json
+data/results/enhanced_analysis.json      ← zone + temporal data for dashboard
 data/detections/frame_000042.jpg         ← if --save-frames enabled
 data/logs/pipeline.log
 runs/detect/                             ← YOLO inference artefacts
-```
-
-**Live demo results — Final presentation, April 2026:**
-
-```
-Upload video → Azure Blob trigger → YOLOv8 inference → Cosmos DB write → Email alert
-Total end-to-end time   : 18 seconds
-Objects detected        : 2 persons · 1 vehicle
-Average confidence      : 78%
-Dashboard refresh time  : < 5 seconds
 ```
 
 ---
@@ -655,25 +752,34 @@ pytest tests --cov=src --cov-report=html
 pytest tests/test_detector.py -v
 pytest tests/test_anomaly_and_alert.py -v
 pytest tests/test_pipeline.py -v
+pytest tests/test_zone_analyzer.py -v
+pytest tests/test_temporal_analyzer.py -v
 ```
 
-| Test File | Coverage Area |
-|-----------|--------------|
-| `test_detector.py` | YOLOv8 model loading, inference execution, structured detection output format |
-| `test_anomaly_and_alert.py` | Baseline learning, Isolation Forest scoring, priority assignment logic, alert log writes |
-| `test_pipeline.py` | End-to-end orchestration, output file creation, inter-module integration |
+| Test File | Tests | Coverage Area |
+|-----------|-------|---------------|
+| `test_detector.py` | — | YOLOv8 model loading, inference execution, structured detection output format |
+| `test_anomaly_and_alert.py` | — | Baseline learning, Isolation Forest scoring, priority assignment logic, alert log writes |
+| `test_pipeline.py` | — | End-to-end orchestration, output file creation, inter-module integration |
+| `test_zone_analyzer.py` | 23 | Point-in-polygon, zone violation detection, risk scoring, custom zone configs |
+| `test_temporal_analyzer.py` | 28 | IoU tracking, sudden appearance, crowd buildup, loitering, approach trajectory |
 
 ---
 
 ## 📈 Future Improvements
 
+- ~~Custom YOLOv8 fine-tuning on annotated border-specific datasets~~ ✅ **Completed** — custom model trained on balanced v2 dataset (DOTA + xView + VEDAI)
+- ~~Zone-based intrusion detection~~ ✅ **Completed** — 3-zone spatial intelligence with night boost
+- ~~Multi-frame temporal analysis~~ ✅ **Completed** — 5 temporal detectors + IoU object tracking
+- ~~Random Forest threat classifier~~ ✅ **Completed** — dual ML pipeline alongside Isolation Forest
+- ~~Geographic threat heatmap~~ ✅ **Completed** — Plotly Mapbox Indian border zone visualisation
 - Stronger model and version tracking for reproducible production deployments
 - REST API layer to expose pipeline controls programmatically
 - Alert frame thumbnails with direct Azure Blob links embedded in dashboard views
 - Automated CI/CD deployment profiles for staging and production environments
 - Multi-camera ingestion with centralised alert aggregation across feeds
-- Custom YOLOv8 fine-tuning on annotated border-specific datasets (VEDAI, xView, DOTA)
 - Real-time streaming support via RTSP or WebRTC camera feeds
+- DeepSORT or ByteTrack integration for production-grade multi-object tracking
 
 ---
 
@@ -695,10 +801,12 @@ pytest tests/test_pipeline.py -v
 **GTU domain requirements fulfilled by this project:**
 
 - ✅ EDA on surveillance and sensor datasets
-- ✅ Anomaly detection model to identify unusual activity patterns
-- ✅ ML/DL object classification of movement patterns using YOLOv8
-- ✅ Alert prioritisation system that reduces false positives via confidence filtering
+- ✅ Anomaly detection model to identify unusual activity patterns (Isolation Forest + Random Forest dual pipeline)
+- ✅ ML/DL object classification of movement patterns using custom-trained YOLOv8 (7 border-specific classes)
+- ✅ Alert prioritisation system with zone intrusion, temporal analysis, and anomaly scoring
 - ✅ Cloud-based data integration using Microsoft Azure (Blob Storage + Cosmos DB)
+- ✅ Spatial intelligence — zone-based intrusion detection with configurable border zones
+- ✅ Video-level temporal intelligence — multi-frame tracking, loitering detection, approach trajectory analysis
 
 ---
 

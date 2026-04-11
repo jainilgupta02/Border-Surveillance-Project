@@ -422,7 +422,6 @@ def inject_css():
 
 @st.cache_data(ttl=5)
 def load_alerts() -> pd.DataFrame:
-    """Load alert_log.json into a DataFrame."""
     if not ALERT_LOG.exists():
         return _demo_alerts()
     try:
@@ -431,19 +430,20 @@ def load_alerts() -> pd.DataFrame:
         if not data:
             return _demo_alerts()
         df = pd.DataFrame(data)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata")
         df["time_str"]  = df["timestamp"].dt.strftime("%H:%M:%S")
         df["date_str"]  = df["timestamp"].dt.strftime("%Y-%m-%d")
-        return df
+        return df.sort_values("timestamp", ascending=False).reset_index(drop=True)  # ← ADD THIS
     except Exception:
         return _demo_alerts()
 
 
 @st.cache_data(ttl=10)
 def load_sessions() -> list:
-    """Load all session JSON files from data/results/."""
     sessions = []
-    for path in sorted(RESULTS_DIR.glob("session_*.json")):
+    # Sort by modification time (newest last) instead of alphabetically
+    paths = sorted(RESULTS_DIR.glob("*session_*.json"), key=lambda p: p.stat().st_mtime)
+    for path in paths:
         try:
             with open(path) as f:
                 sessions.append(json.load(f))
@@ -927,6 +927,120 @@ def chart_detection_heatmap(df: pd.DataFrame):
     return fig
 
 
+# ---------------------------------------------------------------------------
+# Indian border hotspot coordinates — used by threat map
+# ---------------------------------------------------------------------------
+
+BORDER_HOTSPOTS = [
+    # name,                   lat,    lon,    region,               sector,     risk
+    ("Galwan Valley",         34.40,  73.60,  "J&K LoC",            "ALPHA-2",  "CRITICAL"),
+    ("Depsang Plains",        35.10,  77.80,  "Ladakh LAC",         "ALPHA-1",  "CRITICAL"),
+    ("Pangong Tso",           33.70,  78.90,  "Ladakh LAC",         "ALPHA-4",  "HIGH"),
+    ("Siachen Glacier",       35.50,  76.90,  "Ladakh LAC",         "ALPHA-3",  "HIGH"),
+    ("Doklam Plateau",        27.30,  89.10,  "Sikkim Ridge",       "CHARLIE-1","HIGH"),
+    ("Tawang Sector",         27.60,  91.90,  "Arunachal Sector",   "BRAVO-1",  "HIGH"),
+    ("Wagah Border",          31.60,  74.60,  "Punjab Sector",      "ECHO-1",   "MEDIUM"),
+    ("Kutch Gulf",            23.00,  68.90,  "Gujarat Coast",      "GOLF-2",   "MEDIUM"),
+    ("Rann of Kutch",         23.90,  70.00,  "Gujarat Coast",      "GOLF-1",   "MEDIUM"),
+    ("Barmer Sector",         25.70,  71.40,  "Rajasthan Border",   "FOXTROT-1","MEDIUM"),
+    ("Nathula Pass",          27.40,  88.80,  "Sikkim Ridge",       "CHARLIE-2","MEDIUM"),
+    ("Lipulekh Pass",         30.20,  80.30,  "Uttarakhand Pass",   "DELTA-1",  "MEDIUM"),
+    ("Mizoram Border",        22.70,  92.70,  "Northeast Sector",   "INDIA-1",  "LOW"),
+    ("Anjaw District",        28.10,  96.30,  "Arunachal Sector",   "BRAVO-2",  "LOW"),
+    ("Moreh Sector",          24.20,  94.00,  "Manipur Border",     "INDIA-2",  "LOW"),
+]
+
+_HOTSPOT_RISK_COLORS = {
+    "CRITICAL": "#e63946",
+    "HIGH":     "#f4a261",
+    "MEDIUM":   "#f0c060",
+    "LOW":      "#2ec4b6",
+}
+_HOTSPOT_RISK_SIZE = {
+    "CRITICAL": 22,
+    "HIGH":     16,
+    "MEDIUM":   12,
+    "LOW":      8,
+}
+
+
+def chart_threat_map():
+    """
+    Geographic threat map of Indian border hotspots.
+    Uses plotly scatter_mapbox with carto-darkmatter (no token required).
+    Points are colour-coded and sized by risk level.
+    """
+    rows = []
+    for name, lat, lon, region, sector, risk in BORDER_HOTSPOTS:
+        rows.append({
+            "location": name,
+            "lat":      lat,
+            "lon":      lon,
+            "region":   region,
+            "sector":   sector,
+            "risk":     risk,
+            "color":    _HOTSPOT_RISK_COLORS[risk],
+            "size":     _HOTSPOT_RISK_SIZE[risk],
+            "label":    f"{name}<br>{region}<br>Sector: {sector}<br>Risk: {risk}",
+        })
+    df_map = pd.DataFrame(rows)
+
+    fig = go.Figure()
+
+    # Add one trace per risk level so the legend is clean
+    for risk_level in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+        subset = df_map[df_map["risk"] == risk_level]
+        if subset.empty:
+            continue
+        fig.add_trace(go.Scattermapbox(
+            lat         = subset["lat"],
+            lon         = subset["lon"],
+            mode        = "markers+text",
+            marker      = go.scattermapbox.Marker(
+                size        = subset["size"].tolist(),
+                color       = _HOTSPOT_RISK_COLORS[risk_level],
+                opacity     = 0.85,
+            ),
+            text        = subset["location"],
+            textposition = "top right",
+            textfont    = dict(size=9, color=TEXT_PRIMARY),
+            customdata  = subset[["region", "sector", "risk"]].values,
+            hovertemplate = (
+                "<b>%{text}</b><br>"
+                "Region: %{customdata[0]}<br>"
+                "Sector: %{customdata[1]}<br>"
+                "Risk: %{customdata[2]}<br>"
+                "Lat: %{lat:.2f}°N  Lon: %{lon:.2f}°E"
+                "<extra></extra>"
+            ),
+            name        = risk_level,
+            showlegend  = True,
+        ))
+
+    fig.update_layout(
+        mapbox = dict(
+            style   = "carto-darkmatter",
+            center  = dict(lat=28.5, lon=82.0),
+            zoom    = 3.8,
+        ),
+        paper_bgcolor = "rgba(0,0,0,0)",
+        plot_bgcolor  = "rgba(0,0,0,0)",
+        margin        = dict(l=0, r=0, t=0, b=0),
+        height        = 420,
+        legend        = dict(
+            orientation = "h",
+            x           = 0,
+            y           = 1.02,
+            bgcolor     = "rgba(11,23,48,0.85)",
+            bordercolor = BORDER_CLR,
+            borderwidth = 1,
+            font        = dict(size=10, color=TEXT_PRIMARY, family=FONT_FAM),
+        ),
+        showlegend = True,
+    )
+    return fig
+
+
 def chart_motion_score(df: pd.DataFrame):
     """Motion score trend."""
     if df.empty or "motion_score" not in df.columns:
@@ -1003,6 +1117,13 @@ def alert_row_html(alert: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def render_sidebar(df: pd.DataFrame, session: dict):
+    # st_autorefresh MUST be outside the sidebar context — calling it inside
+    # breaks the context manager and spills subsequent widgets into main area
+    if "auto_refresh" not in st.session_state:
+        st.session_state["auto_refresh"] = True  # default ON
+    if st.session_state["auto_refresh"]:
+        st_autorefresh(interval=5000, key="dashboard_refresh")
+
     with st.sidebar:
         # Sidebar logo using base64 (avoids Streamlit file-path restrictions)
         b64 = _logo_b64()
@@ -1053,9 +1174,12 @@ def render_sidebar(df: pd.DataFrame, session: dict):
         st.markdown("""<div class="section-sep" style="margin-top:1rem">◈ CONTROLS</div>""",
                     unsafe_allow_html=True)
 
-        auto_refresh = st.checkbox("Auto Refresh (5s)", value=False)
+        auto_refresh = st.checkbox("Auto Refresh (5s)",
+                                   value=st.session_state["auto_refresh"],
+                                   key="global_auto_refresh")
+        st.session_state["auto_refresh"] = auto_refresh
+
         if auto_refresh:
-            st_autorefresh(interval=5000, key="dashboard_refresh")
             st.caption("🔄 Refreshing every 5 seconds")
 
         n_alerts = st.slider("Alert feed rows", 5, 50, 15)
@@ -1239,10 +1363,15 @@ def render_kpis(df: pd.DataFrame, session: dict, anomaly: dict):
         kpi_card("Avg Inference", f"{avg_inf:.0f}ms",
                  "per frame (CPU)", "#4895ef", "⚡")
     with cols[6]:
-        kpi_card("IF Model",
-                 "FITTED" if model_fitted else "PENDING",
-                 "Isolation Forest status",
-                 GREEN if model_fitted else AMBER, "🧠")
+        rf_fitted    = anomaly.get("rf_fitted", False)
+        both_fitted  = model_fitted and rf_fitted
+        kpi_card(
+            "ML Models",
+            "IF + RF" if both_fitted else ("IF only" if model_fitted else "PENDING"),
+            "Isolation Forest + Random Forest",
+            GREEN if both_fitted else (AMBER if model_fitted else RED),
+            "🤖",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1342,7 +1471,77 @@ def render_main(df: pd.DataFrame, session: dict, anomaly: dict,
                             config={"displayModeBar": False})
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── Row 3: Class distribution + Motion score + Session table ─────
+    # ── Row 3: Geographic Threat Map ─────────────────────────────────
+    st.markdown(
+        '<div class="section-sep">◈ GEOGRAPHIC THREAT INTELLIGENCE — INDIAN BORDER HOTSPOTS</div>',
+        unsafe_allow_html=True,
+    )
+
+    col_map, col_map_legend = st.columns([2.8, 1.0])
+
+    with col_map:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        panel("Live Threat Map — Border Perimeter", "🗺")
+        fig_map = chart_threat_map()
+        st.plotly_chart(fig_map, use_container_width=True,
+                        config={"displayModeBar": False})
+        st.markdown(
+            f'<div style="font-size:0.68rem;color:{TEXT_DIM};margin-top:-6px">'
+            f'Showing {len(BORDER_HOTSPOTS)} monitored border hotspots · '
+            f'Coordinates sourced from operational sector data'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_map_legend:
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        panel("Hotspot Risk Summary", "🎯")
+
+        for risk_level, color in [
+            ("CRITICAL", RED),
+            ("HIGH",     AMBER),
+            ("MEDIUM",   GOLD),
+            ("LOW",      GREEN),
+        ]:
+            count = sum(1 for _, _, _, _, _, r in BORDER_HOTSPOTS if r == risk_level)
+            st.markdown(f"""
+            <div style="display:flex; justify-content:space-between;
+                        align-items:center; padding:0.45rem 0;
+                        border-bottom:1px solid {BORDER_CLR}33;
+                        font-size:0.78rem">
+                <div style="display:flex; align-items:center; gap:0.5rem">
+                    <div style="width:10px;height:10px;border-radius:50%;
+                                background:{color};
+                                box-shadow:0 0 6px {color}88"></div>
+                    <span style="color:{color};font-weight:600">{risk_level}</span>
+                </div>
+                <span style="font-family:'JetBrains Mono',monospace;
+                             color:{TEXT_SECONDARY}">{count} zones</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style="margin-top:0.8rem;padding:0.6rem;
+                    background:rgba(0,212,255,0.05);
+                    border:1px solid {BORDER_CLR};
+                    border-radius:6px;font-size:0.72rem;
+                    color:{TEXT_SECONDARY}">
+            <div style="color:{CYAN};margin-bottom:4px;
+                        font-family:'Rajdhani',sans-serif;
+                        letter-spacing:1px;font-size:0.68rem">
+                ◈ ML PIPELINE
+            </div>
+            <div>Detection: <span style="color:{TEXT_PRIMARY}">YOLOv8</span></div>
+            <div>Anomaly: <span style="color:{TEXT_PRIMARY}">Isolation Forest</span></div>
+            <div>Classify: <span style="color:{TEXT_PRIMARY}">Random Forest</span></div>
+            <div>Sensors: <span style="color:{TEXT_PRIMARY}">VIS · IR · Motion</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Row 4: Class distribution + Motion score + Session table ─────
     col_cls, col_mot, col_ses = st.columns([1.2, 1.2, 1.0])
 
     with col_cls:
@@ -1550,7 +1749,7 @@ def render_main(df: pd.DataFrame, session: dict, anomaly: dict,
         Microsoft Elevate Internship 2026 &nbsp;|&nbsp;
         SAL Institute of Technology and Engineering Research &nbsp;|&nbsp;
         Jainil Gupta (220670132018) &nbsp;|&nbsp;
-        <span style="color:{CYAN}">YOLOv8 + Isolation Forest + Streamlit</span>
+        <span style="color:{CYAN}">YOLOv8 · Isolation Forest · Random Forest · Streamlit</span>
     </div>
     """, unsafe_allow_html=True)
 
