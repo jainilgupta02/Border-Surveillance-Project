@@ -886,7 +886,8 @@ def make_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-frames", type=int, default=0)
 
     return p
-
+BorderSurveillancePipeline = EnhancedPipeline
+BorderSurveillanceConfig   = EnhancedConfig
 
 # ---------------------------------------------------------------------------
 # Entry point
