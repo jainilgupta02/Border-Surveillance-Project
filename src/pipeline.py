@@ -917,3 +917,17 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ── Backwards-compatible aliases for test suite ──────────────────────────────
+BorderSurveillancePipeline = EnhancedPipeline
+PipelineConfig             = EnhancedConfig
+PipelineSession            = dict          # session results are plain dicts
+
+def build_config(video_path: str, **kwargs) -> EnhancedConfig:
+    """Alias for tests — builds a minimal EnhancedConfig."""
+    return EnhancedConfig(video_path=video_path, **kwargs)
+
+DEFAULT_FRAME_SKIP  = DEFAULT_FRAME_SKIP
+DEFAULT_CONFIDENCE  = DEFAULT_CONFIDENCE
+DEFAULT_IOU         = DEFAULT_IOU
