@@ -195,8 +195,8 @@ The system accepts a video file or live camera feed, extracts and analyses every
               ┌──────────────┼──────────────┐
               ↓              ↓              ↓
 ┌─────────────────────┐ ┌──────────────────────┐ ┌────────────────────────┐
-│  🗺️ ZONE ANALYSIS   │ │ ⏱️ TEMPORAL ANALYSIS  │ │ 🧠 ANOMALY DETECTION  │
-│ [zone_analyzer.py]  │ │[temporal_analyzer.py] │ │ [anomaly.py]           │
+│  🗺️ ZONE ANALYSIS   │ │ ⏱️ TEMPORAL ANALYSIS  │ │ 🧠 ANOMALY DETECTION │
+│ [zone_analyzer.py]  │ │[temporal_analyzer.py] │ │ [anomaly.py]          │
 │                     │ │                      │ │                        │
 │ • 3 border zones    │ │ • IoU object tracker │ │ • Isolation Forest     │
 │ • Intrusion detect  │ │ • Approach trajectory│ │ • Random Forest        │
@@ -209,7 +209,7 @@ The system accepts a video file or live camera feed, extracts and analyses every
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                    ALERT MANAGEMENT              [src/alert_manager.py]  │
 │                                                                          │
-│   Zone + Temporal + Anomaly → 🔴 CRITICAL │ 🟠 HIGH │ 🟡 MED │ 🟢 LOW │
+│   Zone + Temporal + Anomaly → 🔴 CRITICAL │ 🟠 HIGH │ 🟡 MED │ 🟢 LOW  │
 │   Rolling JSON log  │  Cooldown dedup  │  SendGrid email notifications   │
 │   Azure Cosmos DB write (if configured)                                  │
 └────────────────────────────┬─────────────────────────────────────────────┘
@@ -222,10 +222,10 @@ The system accepts a video file or live camera feed, extracts and analyses every
 │  🖼️  data/detections/frame_*.jpg     📄  enhanced_analysis.json         │
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────┐    │
-│  │             📊  Streamlit Dashboard  (dashboard/app.py)          │   │
+│  │             📊  Streamlit Dashboard  (dashboard/app.py)         │    │
 │  │  Alert feed │ Priority chart │ Session summaries │ Trend lines   │    │
 │  │  Anomaly overview │ Manual notify │ Auto-refresh │ Threat Map    │    │
-│  │  🗺️ Enhanced Analysis: Zone map │ Temporal alerts │ Tracking     │    │
+│  │  🗺️ Enhanced Analysis: Zone map │ Temporal alerts │ Tracking    │    │
 │  └──────────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -324,17 +324,12 @@ Border Surveillance Project/
 │   └── Border Defence AI logo.png    # Project branding asset
 │
 ├── 📁 scripts/                       # Utility and dataset preparation scripts
-│   ├── main.py                       # Minimal detector demo over a test video
 │   ├── pilot.py                      # Manual integration checker across all modules
 │   ├── smoke_test.py                 # Quick pipeline smoke test
-│   ├── generate_test_video.py        # Synthetic test video generator
 │   ├── preprocess_all_datasets.py    # Full dataset preprocessing
-│   ├── preprocess_local.py           # Local dataset preprocessing
-│   ├── convert_xview_to_yolo.py      # xView → YOLO format converter
+│   ├── preprocess_balanced_v2.py     # Local dataset preprocessing
 │   ├── xview_geojson_to_yolo.py      # xView GeoJSON → YOLO labels
-│   ├── fix_xview_patch.py            # xView patch correction utility
-│   ├── fix_vedai_crowd.py            # VEDAI crowd class fix
-│   └── smart_extract.py             # Intelligent frame extractor
+│   └── smart_extract.py              # Intelligent frame extractor
 │
 ├── 📁 data/                          # Runtime data (gitignored — not in repo)
 │   ├── alerts/                       # alert_log.json — rolling alert output
@@ -353,13 +348,13 @@ Border Surveillance Project/
 │   └── test_temporal_analyzer.py     # 28 tests — temporal pattern detection
 │
 ├── 📁 models/                        # YOLO weights + anomaly model artefacts
-├── 📁 notebooks/                     # EDA and experimentation notebooks
+├── 📁 notebooks/                     # ppt and Report
 ├── 📁 docs/                          # Architecture diagrams + presentations
 ├── 📁 overview/                      # Implementation guide and references
 │
 ├── 📁 models/                        # Trained model artefacts (committed to repo)
-│   ├── border_yolo.pt                # Custom-trained YOLOv8 border detection model (~22 MB)
-│   └── anomaly_model.pkl            # Trained Isolation Forest anomaly detector (99 KB)
+│   ├── border_yolo.pt                # Custom-trained YOLOv8 border detection model (~6 MB)
+│   └── anomaly_model.pkl            # Trained Isolation Forest anomaly detector (751 KB)
 │
 ├── yolov8n.pt                        # YOLOv8 nano base weights (fallback)
 ├── yolov8s.pt                        # YOLOv8 small base weights (fallback)
