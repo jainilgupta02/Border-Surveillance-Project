@@ -886,9 +886,6 @@ def make_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-frames", type=int, default=0)
 
     return p
-BorderSurveillancePipeline = EnhancedPipeline
-BorderSurveillanceConfig   = EnhancedConfig
-PipelineConfig             = EnhancedConfig
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -922,12 +919,38 @@ if __name__ == "__main__":
 # ── Backwards-compatible aliases for test suite ──────────────────────────────
 BorderSurveillancePipeline = EnhancedPipeline
 PipelineConfig             = EnhancedConfig
-PipelineSession            = dict          # session results are plain dicts
+PipelineSession            = EnhancedSession   # NOT dict — tests need attributes
 
-def build_config(video_path: str, **kwargs) -> EnhancedConfig:
-    """Alias for tests — builds a minimal EnhancedConfig."""
-    return EnhancedConfig(video_path=video_path, **kwargs)
 
-DEFAULT_FRAME_SKIP  = DEFAULT_FRAME_SKIP
-DEFAULT_CONFIDENCE  = DEFAULT_CONFIDENCE
-DEFAULT_IOU         = DEFAULT_IOU
+def build_config(args) -> EnhancedConfig:
+    """
+    Convert argparse Namespace → EnhancedConfig.
+    Alias kept for test suite compatibility.
+    """
+    if not getattr(args, "video", None) and not getattr(args, "camera", None):
+        raise ValueError("--video or --camera must be specified")
+
+    return EnhancedConfig(
+        video_path      = getattr(args, "video",         None),
+        camera_index    = getattr(args, "camera",        None),
+        model_path      = getattr(args, "model",         DEFAULT_MODEL_PATH),
+        confidence      = getattr(args, "confidence",    DEFAULT_CONFIDENCE),
+        iou             = getattr(args, "iou",           DEFAULT_IOU),
+        frame_skip      = getattr(args, "frame_skip",    DEFAULT_FRAME_SKIP),
+        compute_flow    = not getattr(args, "no_flow",   False),
+        anomaly_model   = getattr(args, "anomaly_model", DEFAULT_ANOMALY_MODEL),
+        contamination   = getattr(args, "contamination", 0.08),
+        alert_log       = getattr(args, "alert_log",     DEFAULT_ALERT_LOG),
+        cooldown        = getattr(args, "cooldown",      30),
+        enable_zones    = not getattr(args, "no_zones",  False),
+        enable_temporal = not getattr(args, "no_temporal", False),
+        temporal_window = getattr(args, "temporal_window", DEFAULT_TEMPORAL_WINDOW),
+        save_frames     = getattr(args, "save_frames",   False),
+        annotated_dir   = getattr(args, "annotated_dir", DEFAULT_ANNOTATED_DIR),
+        save_results    = not getattr(args, "no_results", False),
+        results_dir     = getattr(args, "results_dir",   DEFAULT_RESULTS_DIR),
+        enhanced_log    = getattr(args, "enhanced_log",  DEFAULT_ENHANCED_LOG),
+        log_file        = getattr(args, "log_file",      DEFAULT_PIPELINE_LOG),
+        verbose         = getattr(args, "verbose",       False),
+        max_frames      = getattr(args, "max_frames",    0),
+    )
