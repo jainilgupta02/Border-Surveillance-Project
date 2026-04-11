@@ -888,6 +888,7 @@ def make_parser() -> argparse.ArgumentParser:
     return p
 BorderSurveillancePipeline = EnhancedPipeline
 BorderSurveillanceConfig   = EnhancedConfig
+PipelineConfig             = EnhancedConfig
 
 # ---------------------------------------------------------------------------
 # Entry point
