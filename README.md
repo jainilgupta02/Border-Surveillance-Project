@@ -116,7 +116,7 @@ The system accepts a video file or live camera feed, extracts and analyses every
 <td width="50%" valign="top">
 
 ### 🔍 Object Detection
-- Custom-trained YOLOv8n model on balanced 7-class border surveillance dataset (DOTA + xView + VEDAI)
+- Custom-trained YOLOv8n model on balanced 7-class border surveillance dataset (DOTA + xView + Visdrone)
 - Detects: `person`, `vehicle`, `crowd`, `military_vehicle`, `aircraft`, `ship`, `suspicious_object`
 - Structured per-detection output with class, confidence, bounding box, and threat tags
 - `has_high` and `has_critical` flags per frame for downstream prioritisation
@@ -337,7 +337,7 @@ Border Surveillance Project/
 │   ├── test_videos/                  # Sample videos for local runs
 │   ├── processed/                    # Preprocessed training-ready data (7 classes)
 │   ├── annotations/                  # Dataset annotation files
-│   ├── raw/                          # Source datasets (DOTA, xView, VEDAI)
+│   ├── raw/                          # Source datasets (DOTA, xView, Visdrone)
 │   └── logs/                         # Pipeline runtime logs
 │
 ├── 📁 tests/                         # Automated test suite (285 tests)
@@ -671,7 +671,7 @@ Enhanced analysis dashboard page (auto-detected by Streamlit multi-page system).
 
 </div>
 
-> **Training config:** YOLOv8n · 30 epochs · 640×640 · CPU (12th Gen Intel i5-12350U) · Balanced v2 dataset (DOTA + xView + VEDAI)
+> **Training config:** YOLOv8n · 30 epochs · 640×640 · CPU (12th Gen Intel i5-12350U) · Balanced v2 dataset (DOTA + xView + Visdrone)
 > **Inference speed:** 1.4ms preprocess · 114.7ms inference · 1.4ms postprocess per image
 
 ---
@@ -763,7 +763,7 @@ pytest tests/test_temporal_analyzer.py -v
 
 ## 📈 Future Improvements
 
-- ~~Custom YOLOv8 fine-tuning on annotated border-specific datasets~~ ✅ **Completed** — custom model trained on balanced v2 dataset (DOTA + xView + VEDAI)
+- ~~Custom YOLOv8 fine-tuning on annotated border-specific datasets~~ ✅ **Completed** — custom model trained on balanced v2 dataset (DOTA + xView + Visdrone)
 - ~~Zone-based intrusion detection~~ ✅ **Completed** — 3-zone spatial intelligence with night boost
 - ~~Multi-frame temporal analysis~~ ✅ **Completed** — 5 temporal detectors + IoU object tracking
 - ~~Random Forest threat classifier~~ ✅ **Completed** — dual ML pipeline alongside Isolation Forest
