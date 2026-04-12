@@ -161,6 +161,7 @@ class EnhancedConfig:
 
     # Output
     save_frames:       bool            = False
+    save_video:        bool            = False   # [NEW] compile annotated video
     annotated_dir:     str             = DEFAULT_ANNOTATED_DIR
     save_results:      bool            = True
     results_dir:       str             = DEFAULT_RESULTS_DIR
@@ -184,6 +185,18 @@ class EnhancedConfig:
         if self.video_path:
             return self.video_path
         return self.camera_index
+
+    def run_subdir(self) -> str:
+        """
+        Per-run subfolder inside annotated_dir.
+        Format: data/detections/<video_stem>_<YYYYMMDD_HHMMSS>/
+        e.g.  : data/detections/dota_aerial_test_20260412_225600/
+        Every run gets its own folder so frames never mix.
+        """
+        ts   = time.strftime("%Y%m%d_%H%M%S")
+        name = Path(self.video_path).stem if self.video_path \
+               else f"camera_{self.camera_index}"
+        return os.path.join(self.annotated_dir, f"{name}_{ts}")
 
 
 # ---------------------------------------------------------------------------
@@ -348,11 +361,18 @@ class EnhancedPipeline:
         self._zone_analyzer     = self._init_zone_analyzer()
         self._temporal_analyzer = self._init_temporal_analyzer()
 
-        # Prepare output directories
-        if config.save_frames:
-            os.makedirs(config.annotated_dir, exist_ok=True)
+        # Per-run output subfolder — e.g. data/detections/dota_aerial_test_20260412_225600/
+        self._run_dir = config.run_subdir()                         if (config.save_frames or config.save_video) else None
+        if self._run_dir:
+            os.makedirs(self._run_dir, exist_ok=True)
+            logger.info("Output folder:        %s", self._run_dir)
+
         if config.save_results:
             os.makedirs(config.results_dir, exist_ok=True)
+
+        # VideoWriter — opened lazily on first frame so we know the frame size
+        self._video_writer = None
+        self._video_path   = None
 
     # ------------------------------------------------------------------
     # Module initialisation
@@ -449,18 +469,48 @@ class EnhancedPipeline:
             a_level, a_score, z_info, t_info, priority_tag,
         )
 
-    def _save_annotated_frame(self, frame_item, fr_result) -> None:
-        import cv2 as _cv2
+    def _get_annotated(self, frame_item, fr_result):
+        """Return annotated uint8 frame (shared by save_frames + save_video)."""
         import numpy as np
         frame = frame_item["frame"]
         if frame.dtype != np.uint8:
             frame = (frame * 255).clip(0, 255).astype(np.uint8)
-        annotated = self._detector.annotate_frame(frame, fr_result)
+        return self._detector.annotate_frame(frame, fr_result)
+
+    def _save_annotated_frame(self, frame_item, fr_result) -> None:
+        import cv2 as _cv2
+        annotated = self._get_annotated(frame_item, fr_result)
         out_path  = os.path.join(
-            self.config.annotated_dir,
+            self._run_dir,
             f"frame_{fr_result.frame_id:06d}.jpg",
         )
         _cv2.imwrite(out_path, annotated)
+
+    def _write_video_frame(self, frame_item, fr_result) -> None:
+        """Write one annotated frame to the output video."""
+        import cv2 as _cv2
+        annotated = self._get_annotated(frame_item, fr_result)
+        h, w = annotated.shape[:2]
+
+        # Lazy-init VideoWriter on first frame — now we know the exact size
+        if self._video_writer is None:
+            self._video_path = os.path.join(
+                self._run_dir, "annotated_output.mp4"
+            )
+            # FPS = original_fps / frame_skip so playback speed matches source
+            import cv2 as _cv2
+            cap = _cv2.VideoCapture(self.config.video_path or 0)
+            src_fps = cap.get(_cv2.CAP_PROP_FPS) or 30.0
+            cap.release()
+            out_fps = max(1.0, src_fps / max(self.config.frame_skip, 1))
+            fourcc  = _cv2.VideoWriter_fourcc(*"mp4v")
+            self._video_writer = _cv2.VideoWriter(
+                self._video_path, fourcc, out_fps, (w, h)
+            )
+            logger.info("VideoWriter opened → %s  (%.1f FPS)",
+                        self._video_path, out_fps)
+
+        self._video_writer.write(annotated)
 
     def _save_session_results(self) -> None:
         summary = self.session.to_summary()
@@ -585,9 +635,11 @@ class EnhancedPipeline:
 
         fr_dict = fr_result.to_dict()
 
-        # Save annotated frame (optional)
+        # Save annotated frame and/or write video frame (optional)
         if self.config.save_frames:
             self._save_annotated_frame(frame_item, fr_result)
+        if self.config.save_video:
+            self._write_video_frame(frame_item, fr_result)
 
         # ── Stage 3: Zone Analysis [NEW] ─────────────────────────────
         zone_result = None
@@ -717,9 +769,10 @@ class EnhancedPipeline:
                 frame = (frame * 255).clip(0, 255).astype(np.uint8)
             annotated = self._detector.annotate_frame(frame, fr_result)
 
-            os.makedirs(self.config.annotated_dir, exist_ok=True)
+            save_dir = self._run_dir or self.config.annotated_dir
+            os.makedirs(save_dir, exist_ok=True)
             local_path = os.path.join(
-                self.config.annotated_dir,
+                save_dir,
                 f"alert_{alert.alert_id}_frame_{fr_result.frame_id:06d}.jpg",
             )
             _cv2.imwrite(local_path, annotated)
@@ -771,6 +824,11 @@ class EnhancedPipeline:
             for key, val in temp_summary.items():
                 logger.info("  %-28s %s", key, val)
 
+        # Release VideoWriter if open
+        if self._video_writer is not None:
+            self._video_writer.release()
+            logger.info("Annotated video saved → %s", self._video_path)
+
         if self.config.save_results:
             self._save_session_results()
             self._save_enhanced_analysis()
@@ -778,8 +836,8 @@ class EnhancedPipeline:
         logger.info("=" * 65)
         logger.info("Alert log → %s", self.config.alert_log)
         logger.info("Enhanced log → %s", self.config.enhanced_log)
-        if self.config.save_frames:
-            logger.info("Annotated frames → %s", self.config.annotated_dir)
+        if self._run_dir:
+            logger.info("Output folder → %s", self._run_dir)
         logger.info("Next step: streamlit run dashboard/app.py")
         logger.info("=" * 65)
 
@@ -810,6 +868,7 @@ def build_config(args: argparse.Namespace) -> EnhancedConfig:
         enable_temporal  = not args.no_temporal,
         temporal_window  = args.temporal_window,
         save_frames      = args.save_frames,
+        save_video       = args.save_video,
         annotated_dir    = args.annotated_dir,
         save_results     = not args.no_results,
         results_dir      = args.results_dir,
@@ -871,8 +930,12 @@ def make_parser() -> argparse.ArgumentParser:
                    help="Temporal analysis sliding window size")
 
     # Output
-    p.add_argument("--save-frames", action="store_true")
-    p.add_argument("--annotated-dir", default=DEFAULT_ANNOTATED_DIR)
+    p.add_argument("--save-frames", action="store_true",
+                   help="Save individual annotated frames as JPGs")
+    p.add_argument("--save-video", action="store_true",
+                   help="Compile annotated frames into output video (mp4v)")
+    p.add_argument("--annotated-dir", default=DEFAULT_ANNOTATED_DIR,
+                   help="Base folder for detections (subfolder created per run)")
     p.add_argument("--no-results", action="store_true")
     p.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
     p.add_argument("--enhanced-log", default=DEFAULT_ENHANCED_LOG,
@@ -946,6 +1009,7 @@ def build_config(args) -> EnhancedConfig:
         enable_temporal = not getattr(args, "no_temporal", False),
         temporal_window = getattr(args, "temporal_window", DEFAULT_TEMPORAL_WINDOW),
         save_frames     = getattr(args, "save_frames",   False),
+        save_video      = getattr(args, "save_video",    False),
         annotated_dir   = getattr(args, "annotated_dir", DEFAULT_ANNOTATED_DIR),
         save_results    = not getattr(args, "no_results", False),
         results_dir     = getattr(args, "results_dir",   DEFAULT_RESULTS_DIR),
