@@ -2,39 +2,44 @@
 Anomaly Detection Module
 =========================
 
-Detects suspicious behavioural patterns in border surveillance footage by
-analysing the *distribution* of detections across frames — not just whether
-an object is present, but whether its position, size, motion, frequency, and
-class combination are unusual for this video stream.
+Detects suspicious behavioural patterns in border surveillance footage
+by analysing the distribution of detections across frames — not just
+whether an object is present, but whether its position, size, motion,
+frequency, and class combination are unusual for this video stream.
 
-Architecture position:
-    preprocessing.py → detector.py → [THIS MODULE] → alert_manager.py → dashboard
+Architecture position: preprocessing.py → detector.py → [THIS MODULE] →
+alert_manager.py → dashboard
 
 Design principles:
-    1. Separation of concerns — this module knows nothing about video or YOLO.
-       It only consumes FrameResult dicts and produces AnomalyResult dicts.
-    2. Two-phase operation:
-         Phase A (fit)   — observe N "baseline" frames, learn what normal looks like.
-         Phase B (score) — score every incoming frame against that baseline.
-    3. Persistence — the fitted model saves to disk so pipeline.py doesn't
-       re-fit on every run.
-    4. Explainability — every anomaly carries a human-readable reason so the
-       dashboard and alert emails are meaningful.
-    5. Graceful degradation — if fewer than MIN_SAMPLES frames are available
-       before fit() is called, the module falls back to rule-based scoring so
-       the pipeline never crashes.
+  1. Separation of concerns — this module knows nothing about video or YOLO.
+     It only consumes FrameResult dicts and produces AnomalyResult dicts.
+  2. Two-phase operation:
+       Phase A (fit)   — observe N "baseline" frames, learn what normal looks like.
+       Phase B (score) — score every incoming frame against that baseline.
+  3. Dual ML pipeline:
+       Isolation Forest — unsupervised anomaly scoring (continuous score).
+       Random Forest    — supervised threat classification (CRITICAL/HIGH/MEDIUM/LOW).
+       Both models are auto-trained from the same baseline data — no manual
+       labelling required. IF scores are used to auto-generate RF labels.
+  4. Persistence — both fitted models save to disk so pipeline.py doesn't
+     re-fit on every run.
+  5. Explainability — every anomaly carries a human-readable reason so the
+     dashboard and alert emails are meaningful.
+  6. Graceful degradation — if fewer than MIN_SAMPLES frames are available
+     before fit() is called, the module falls back to rule-based scoring
+     so the pipeline never crashes.
 
 Anomaly features (per frame — 10 dimensions):
-    0  detection_count       how many objects in the frame
-    1  class_diversity       number of distinct classes present
-    2  avg_confidence        mean detection confidence
-    3  max_confidence        highest single detection confidence
-    4  critical_count        crowd + military_vehicle + suspicious_object count
-    5  avg_center_x          spatial centre of all detections (normalised 0-1)
-    6  avg_center_y          spatial centre of all detections (normalised 0-1)
-    7  avg_width_norm        average normalised bounding box width
-    8  motion_score          optical flow mean magnitude (0 if unavailable)
-    9  suspicious_flag       1.0 if any CRITICAL_THREAT_CLASS present, else 0.0
+  0  detection_count   how many objects in the frame
+  1  class_diversity   number of distinct classes present
+  2  avg_confidence    mean detection confidence
+  3  max_confidence    highest single detection confidence
+  4  critical_count    crowd + military_vehicle + suspicious_object count
+  5  avg_center_x      spatial centre of all detections (normalised 0-1)
+  6  avg_center_y      spatial centre of all detections (normalised 0-1)
+  7  avg_width_norm    average normalised bounding box width
+  8  motion_score      optical flow mean magnitude (0 if unavailable)
+  9  suspicious_flag   1.0 if any CRITICAL_THREAT_CLASS present, else 0.0
 
 Author: Border Surveillance AI Team (Jainil Gupta)
 Date:   April 2026
@@ -66,7 +71,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-# Minimum frames needed before Isolation Forest can be fitted
+# Minimum frames needed before models can be fitted
 MIN_SAMPLES: int = 30
 
 # Isolation Forest contamination — expected fraction of anomalous frames.
@@ -74,7 +79,7 @@ MIN_SAMPLES: int = 30
 CONTAMINATION: float = 0.08
 
 # Anomaly score thresholds (Isolation Forest decision_function output).
-# More negative = more anomalous.  Range is roughly [-0.5, +0.2].
+# More negative = more anomalous. Range is roughly [-0.5, +0.2].
 THRESHOLD_HIGH:     float = -0.08   # score below this → HIGH alert
 THRESHOLD_CRITICAL: float = -0.18   # score below this → CRITICAL alert
 
@@ -88,15 +93,14 @@ CRITICAL_THREAT_CLASSES = {"military_vehicle", "suspicious_object"}
 # Feature vector dimension — must match extract_features() output length
 FEATURE_DIM: int = 10
 
-
 # ---------------------------------------------------------------------------
 # Feature extraction
 # ---------------------------------------------------------------------------
 
 def extract_features(frame_result: dict) -> np.ndarray:
     """
-    Convert a FrameResult dict into a fixed-length feature vector for the
-    Isolation Forest.
+    Convert a FrameResult dict into a fixed-length feature vector for
+    the Isolation Forest and Random Forest classifiers.
 
     Args:
         frame_result: Dict from FrameResult.to_dict() — produced by detector.py.
@@ -106,8 +110,8 @@ def extract_features(frame_result: dict) -> np.ndarray:
 
     Note:
         All features are deliberately low-dimensional and interpretable.
-        High-dimensional pixel features are NOT used — the Isolation Forest
-        works on behavioural signals, not raw images.
+        High-dimensional pixel features are NOT used — the models work on
+        behavioural signals, not raw images.
     """
     detections      = frame_result.get("detections", [])
     motion_score    = frame_result.get("motion_score") or 0.0
@@ -168,10 +172,12 @@ class AnomalyResult:
     Attributes:
         frame_id:        Matches FrameResult.frame_id.
         timestamp:       Wall-clock detection time (seconds since epoch).
-        anomaly_score:   Raw Isolation Forest score.  More negative = worse.
+        anomaly_score:   Raw Isolation Forest score. More negative = worse.
                          Range roughly [-0.5, +0.2].
-        anomaly_prob:    Normalised probability in [0, 1].  1 = most anomalous.
+        anomaly_prob:    Normalised probability in [0, 1]. 1 = most anomalous.
         alert_level:     "normal" | "high" | "critical"
+        rf_label:        Random Forest threat classification.
+                         "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"
         reasons:         Human-readable list explaining why this frame was flagged.
         detection_count: Number of objects detected in this frame.
         motion_score:    Optical flow score from preprocessing.py.
@@ -181,8 +187,9 @@ class AnomalyResult:
     timestamp:       float
     anomaly_score:   float
     anomaly_prob:    float
-    alert_level:     str              # "normal" | "high" | "critical"
+    alert_level:     str                # "normal" | "high" | "critical"
     reasons:         List[str]
+    rf_label:        str              = "UNKNOWN"   # Random Forest classification
     detection_count: int              = 0
     motion_score:    Optional[float]  = None
     features:        List[float]      = field(default_factory=list)
@@ -195,6 +202,7 @@ class AnomalyResult:
             "anomaly_score":   round(self.anomaly_score, 4),
             "anomaly_prob":    round(self.anomaly_prob,  4),
             "alert_level":     self.alert_level,
+            "rf_label":        self.rf_label,
             "reasons":         self.reasons,
             "detection_count": self.detection_count,
             "motion_score":    round(self.motion_score, 4)
@@ -208,32 +216,195 @@ class AnomalyResult:
 
 
 # ---------------------------------------------------------------------------
-# AnomalyDetector
+# ThreatClassifier  — Random Forest threat level classifier
+# ---------------------------------------------------------------------------
+
+class ThreatClassifier:
+    """
+    Random Forest classifier that maps the same 10-dim feature vector used
+    by Isolation Forest into a discrete threat label:
+        CRITICAL | HIGH | MEDIUM | LOW
+
+    Training labels are auto-generated from Isolation Forest scores so no
+    manual annotation is required. The classifier adds a supervised
+    interpretation layer on top of the unsupervised anomaly scores, giving
+    a more human-readable and reproducible threat classification.
+
+    Configuration:
+        n_estimators = 200   — large ensemble for stability
+        max_depth    = 10    — prevent overfitting on small baseline
+        5-fold cross-validation accuracy is logged after training.
+    """
+
+    # Score → label mapping (mirrors alert thresholds for consistency)
+    _SCORE_LABEL_THRESHOLDS = [
+        (THRESHOLD_CRITICAL, "CRITICAL"),   # score < -0.18 → CRITICAL
+        (THRESHOLD_HIGH,     "HIGH"),       # score < -0.08 → HIGH
+        (0.05,               "MEDIUM"),     # score < +0.05 → MEDIUM
+    ]
+    _DEFAULT_LABEL = "LOW"
+
+    def __init__(self, random_state: int = 42) -> None:
+        self.random_state = random_state
+        self._model       = None
+        self._scaler      = None
+        self._is_fitted   = False
+        self._classes_    = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def fit(
+        self,
+        features:  List[np.ndarray],
+        if_scores: List[float],
+    ) -> dict:
+        """
+        Train the Random Forest on feature vectors using auto-generated
+        labels derived from Isolation Forest scores.
+
+        Args:
+            features:  List of 10-dim feature arrays (one per baseline frame).
+            if_scores: Isolation Forest decision_function scores for the same
+                       frames (used to auto-generate training labels).
+
+        Returns:
+            dict with training metrics (accuracy, cv_accuracy, n_samples).
+        """
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import cross_val_score
+        from sklearn.preprocessing import StandardScaler
+
+        labels = [self._score_to_label(s) for s in if_scores]
+        X      = np.vstack(features)
+        y      = np.array(labels)
+
+        self._scaler = StandardScaler()
+        X_scaled     = self._scaler.fit_transform(X)
+
+        self._model = RandomForestClassifier(
+            n_estimators = 200,
+            max_depth    = 10,
+            random_state = self.random_state,
+            n_jobs       = -1,
+        )
+        self._model.fit(X_scaled, y)
+        self._is_fitted = True
+
+        # 5-fold cross-validation (min 2 samples per class required)
+        cv_accuracy = None
+        unique_labels = set(labels)
+        if len(unique_labels) >= 2 and len(labels) >= 10:
+            try:
+                cv_scores   = cross_val_score(self._model, X_scaled, y, cv=5)
+                cv_accuracy = round(float(cv_scores.mean()), 4)
+            except Exception:
+                pass
+
+        train_acc = round(float(np.mean(self._model.predict(X_scaled) == y)), 4)
+
+        logger.info(
+            "Random Forest fitted | n_samples=%d | train_acc=%.1f%% | "
+            "cv_acc=%s | classes=%s",
+            len(labels),
+            train_acc * 100,
+            f"{cv_accuracy*100:.1f}%" if cv_accuracy else "N/A",
+            sorted(unique_labels),
+        )
+
+        return {
+            "n_samples":   len(labels),
+            "accuracy":    train_acc,
+            "cv_accuracy": cv_accuracy,
+            "classes":     sorted(unique_labels),
+        }
+
+    def classify(self, feature_vector: np.ndarray) -> str:
+        """
+        Classify one frame's feature vector into a threat label.
+
+        Args:
+            feature_vector: 10-dim np.ndarray from extract_features().
+
+        Returns:
+            Threat label: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"
+        """
+        if not self._is_fitted or self._model is None:
+            return "UNKNOWN"
+        try:
+            X       = self._scaler.transform(feature_vector.reshape(1, -1))
+            label   = self._model.predict(X)[0]
+            return str(label)
+        except Exception as exc:
+            logger.debug("RF classify error: %s", exc)
+            return "UNKNOWN"
+
+    def classify_proba(self, feature_vector: np.ndarray) -> dict:
+        """
+        Return class probabilities for a feature vector.
+
+        Returns:
+            dict mapping class label → probability float.
+        """
+        if not self._is_fitted or self._model is None:
+            return {}
+        try:
+            X      = self._scaler.transform(feature_vector.reshape(1, -1))
+            probas = self._model.predict_proba(X)[0]
+            return {
+                cls: round(float(p), 4)
+                for cls, p in zip(self._model.classes_, probas)
+            }
+        except Exception:
+            return {}
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _score_to_label(cls, if_score: float) -> str:
+        """Map an Isolation Forest score to a training label."""
+        for threshold, label in cls._SCORE_LABEL_THRESHOLDS:
+            if if_score < threshold:
+                return label
+        return cls._DEFAULT_LABEL
+
+
+# ---------------------------------------------------------------------------
+# AnomalyDetector  — main class wiring IF + RF together
 # ---------------------------------------------------------------------------
 
 class AnomalyDetector:
     """
-    Isolation Forest wrapper for frame-level behavioural anomaly detection.
+    Dual ML pipeline for frame-level behavioural anomaly detection.
+
+    Stage 1 — Isolation Forest (unsupervised):
+        Learns "what normal looks like" from the first MIN_SAMPLES frames.
+        Assigns a continuous anomaly score per frame (more negative = worse).
+
+    Stage 2 — Random Forest (supervised):
+        Trained on the same baseline frames, with labels auto-derived from
+        Isolation Forest scores.  Classifies each scored frame into a
+        discrete threat level: CRITICAL / HIGH / MEDIUM / LOW.
 
     Usage (pipeline.py calls it like this):
 
         detector  = BorderDetector()
         anomaly   = AnomalyDetector()
-        baseline  = []
-        results   = []
 
         for frame_item in extract_frames(video):
             frame_result = detector.detect(frame_item)
             fr_dict      = frame_result.to_dict()
 
-            if len(baseline) < MIN_SAMPLES:
-                baseline.append(fr_dict)
-                if anomaly.collect_baseline(fr_dict):
+            if not anomaly._is_fitted:
+                ready = anomaly.collect_baseline(fr_dict)
+                if ready:
                     anomaly.fit()
                 continue
 
             anomaly_result = anomaly.score(fr_dict)
-            results.append(anomaly_result)
             if anomaly_result.is_alert:
                 alert_manager.process(anomaly_result)
 
@@ -253,14 +424,13 @@ class AnomalyDetector:
         self.model_path    = model_path
         self.random_state  = random_state
 
-        # BUG FIX: initialise _scaler to None so _ml_score never raises
-        # AttributeError even if _load_model() fails or isn't called.
         self._model:          object           = None
         self._scaler:         object           = None
+        self._classifier:     ThreatClassifier = ThreatClassifier(random_state)
         self._is_fitted:      bool             = False
         self._baseline_data:  List[np.ndarray] = []
 
-        # Try loading a previously saved model
+        # Try loading previously saved models
         if os.path.exists(model_path):
             self._load_model()
 
@@ -287,33 +457,32 @@ class AnomalyDetector:
 
     def fit(self, frame_results: Optional[List[dict]] = None) -> None:
         """
-        Fit the Isolation Forest on baseline frame data.
+        Fit both the Isolation Forest and Random Forest on baseline data.
 
-        BUG FIX: frame_results are converted to features and REPLACE
-        _baseline_data — they do NOT append to it.  This prevents
-        double-counting when collect_baseline() has already been called.
+        The Isolation Forest is fitted first to generate continuous anomaly
+        scores. Those scores are then used as auto-labels to train the
+        Random Forest classifier — no manual annotation needed.
 
         Args:
-            frame_results: Optional list of FrameResult dicts.  When
-                           provided, these replace any data already
-                           buffered by collect_baseline().  When None,
-                           uses data buffered by collect_baseline().
+            frame_results: Optional list of FrameResult dicts. When provided,
+                           these replace any data already buffered by
+                           collect_baseline(). When None, uses data buffered
+                           by collect_baseline().
 
         Raises:
-            ValueError: If fewer than MIN_SAMPLES frames are available
-                        after merging both sources.
+            ValueError: If fewer than MIN_SAMPLES frames are available.
         """
         from sklearn.ensemble import IsolationForest
         from sklearn.preprocessing import StandardScaler
 
-        # BUG FIX: if frame_results supplied, use ONLY those (don't merge)
+        # If frame_results supplied, use ONLY those (don't merge)
         if frame_results is not None:
             self._baseline_data = [extract_features(fr) for fr in frame_results]
 
         n = len(self._baseline_data)
         if n < MIN_SAMPLES:
             logger.warning(
-                "Only %d baseline frames — minimum is %d.  "
+                "Only %d baseline frames — minimum is %d. "
                 "Falling back to rule-based scoring.",
                 n, MIN_SAMPLES,
             )
@@ -322,6 +491,7 @@ class AnomalyDetector:
 
         X = np.vstack(self._baseline_data)
 
+        # ── Stage 1: Fit Isolation Forest ────────────────────────────
         self._scaler  = StandardScaler()
         X_scaled      = self._scaler.fit_transform(X)
 
@@ -336,24 +506,38 @@ class AnomalyDetector:
         self._is_fitted = True
 
         logger.info(
-            "Isolation Forest fitted on %d baseline frames  |  "
-            "contamination=%.2f  |  estimators=200",
+            "Isolation Forest fitted | n=%d | contamination=%.2f | estimators=200",
             n, self.contamination,
         )
+
+        # ── Stage 2: Get IF scores for the baseline data ─────────────
+        if_scores = self._model.decision_function(X_scaled).tolist()
+
+        # ── Stage 3: Fit Random Forest using IF scores as auto-labels ─
+        rf_metrics = self._classifier.fit(self._baseline_data, if_scores)
+        logger.info(
+            "Random Forest fitted | acc=%.1f%% | cv=%s | classes=%s",
+            rf_metrics["accuracy"] * 100,
+            f"{rf_metrics['cv_accuracy']*100:.1f}%"
+            if rf_metrics["cv_accuracy"] else "N/A",
+            rf_metrics["classes"],
+        )
+
         self._save_model()
 
     def score(self, frame_result: dict) -> AnomalyResult:
         """
-        Score a single frame for anomalous behaviour.
+        Score a single frame through the full dual-model pipeline.
 
-        Uses Isolation Forest if fitted, otherwise falls back to rule-based
-        scoring using threat class flags so the pipeline never crashes.
+        Stage 1 (IF): anomaly score + alert level
+        Stage 2 (RF): threat classification label
 
         Args:
             frame_result: Dict from FrameResult.to_dict().
 
         Returns:
-            AnomalyResult with alert_level and human-readable reasons.
+            AnomalyResult with anomaly_score, alert_level, rf_label,
+            and human-readable reasons.
         """
         features    = extract_features(frame_result)
         frame_id    = frame_result.get("frame_id",        0)
@@ -362,6 +546,7 @@ class AnomalyDetector:
         det_count   = frame_result.get("detection_count", 0)
         detections  = frame_result.get("detections",      [])
 
+        # ── Stage 1: Isolation Forest scoring ────────────────────────
         if self._is_fitted:
             anomaly_score, anomaly_prob = self._ml_score(features)
         else:
@@ -388,12 +573,16 @@ class AnomalyDetector:
             alert_level, features, detections, motion, boost_reasons
         )
 
+        # ── Stage 2: Random Forest classification ────────────────────
+        rf_label = self._classifier.classify(features)
+
         return AnomalyResult(
             frame_id        = frame_id,
             timestamp       = timestamp,
             anomaly_score   = anomaly_score,
             anomaly_prob    = anomaly_prob,
             alert_level     = alert_level,
+            rf_label        = rf_label,
             reasons         = reasons,
             detection_count = det_count,
             motion_score    = motion,
@@ -402,7 +591,7 @@ class AnomalyDetector:
 
     def score_batch(self, frame_results: List[dict]) -> List[AnomalyResult]:
         """
-        Score a list of frame results.  Convenience wrapper around score().
+        Score a list of frame results. Convenience wrapper around score().
 
         Args:
             frame_results: List of FrameResult dicts.
@@ -420,28 +609,35 @@ class AnomalyDetector:
             results: List of AnomalyResult objects.
 
         Returns:
-            Summary dict for Cosmos DB / dashboard.
+            Summary dict for Cosmos DB / dashboard — includes RF counts.
         """
         if not results:
             return {}
 
-        scores   = [r.anomaly_score for r in results]
-        probs    = [r.anomaly_prob  for r in results]
-        normals  = sum(1 for r in results if r.alert_level == "normal")
-        highs    = sum(1 for r in results if r.alert_level == "high")
+        scores    = [r.anomaly_score for r in results]
+        probs     = [r.anomaly_prob  for r in results]
+        normals   = sum(1 for r in results if r.alert_level == "normal")
+        highs     = sum(1 for r in results if r.alert_level == "high")
         criticals = sum(1 for r in results if r.alert_level == "critical")
 
+        # RF label distribution
+        rf_counts: Dict[str, int] = {}
+        for r in results:
+            rf_counts[r.rf_label] = rf_counts.get(r.rf_label, 0) + 1
+
         return {
-            "total_frames":      len(results),
-            "normal_frames":     normals,
-            "high_alert_frames": highs,
-            "critical_frames":   criticals,
-            "alert_rate":        round((highs + criticals) / len(results), 4),
-            "avg_anomaly_score": round(float(np.mean(scores)), 4),
-            "min_anomaly_score": round(float(np.min(scores)),  4),
-            "avg_anomaly_prob":  round(float(np.mean(probs)),  4),
-            "alert_frame_ids":   [r.frame_id for r in results if r.is_alert][:20],
-            "model_fitted":      self._is_fitted,
+            "total_frames":        len(results),
+            "normal_frames":       normals,
+            "high_alert_frames":   highs,
+            "critical_frames":     criticals,
+            "alert_rate":          round((highs + criticals) / len(results), 4),
+            "avg_anomaly_score":   round(float(np.mean(scores)), 4),
+            "min_anomaly_score":   round(float(np.min(scores)),  4),
+            "avg_anomaly_prob":    round(float(np.mean(probs)),  4),
+            "alert_frame_ids":     [r.frame_id for r in results if r.is_alert][:20],
+            "model_fitted":        self._is_fitted,
+            "rf_fitted":           self._classifier._is_fitted,
+            "rf_label_counts":     rf_counts,
         }
 
     # ------------------------------------------------------------------
@@ -449,10 +645,10 @@ class AnomalyDetector:
     # ------------------------------------------------------------------
 
     def _ml_score(self, features: np.ndarray) -> Tuple[float, float]:
-        """Isolation Forest scoring path.  Only called when _is_fitted=True."""
-        X        = self._scaler.transform(features.reshape(1, -1))
-        raw      = float(self._model.decision_function(X)[0])
-        prob     = float(1.0 / (1.0 + np.exp(raw * 10)))
+        """Isolation Forest scoring path. Only called when _is_fitted=True."""
+        X    = self._scaler.transform(features.reshape(1, -1))
+        raw  = float(self._model.decision_function(X)[0])
+        prob = float(1.0 / (1.0 + np.exp(raw * 10)))
         return raw, max(0.0, min(1.0, prob))
 
     def _rule_score(
@@ -553,26 +749,38 @@ class AnomalyDetector:
     # ------------------------------------------------------------------
 
     def _save_model(self) -> None:
-        """Persist fitted model + scaler to disk."""
+        """Persist both fitted models (IF + RF) to disk."""
         os.makedirs(os.path.dirname(self.model_path) or ".", exist_ok=True)
         payload = {
-            "model":   self._model,
-            "scaler":  self._scaler,
-            "version": "1.0",
+            "model":      self._model,
+            "scaler":     self._scaler,
+            "classifier": self._classifier,
+            "version":    "2.0",          # bumped to reflect dual-model
         }
         with open(self.model_path, "wb") as f:
             pickle.dump(payload, f)
-        logger.info("Anomaly model saved → %s", self.model_path)
+        logger.info("Dual model (IF + RF) saved → %s", self.model_path)
 
     def _load_model(self) -> None:
-        """Load a previously saved model from disk."""
+        """Load both saved models from disk."""
         try:
             with open(self.model_path, "rb") as f:
                 payload = pickle.load(f)
-            self._model     = payload["model"]
-            self._scaler    = payload["scaler"]
-            self._is_fitted = True
-            logger.info("Anomaly model loaded ← %s", self.model_path)
+            self._model      = payload["model"]
+            self._scaler     = payload["scaler"]
+            self._is_fitted  = True
+
+            # Load RF classifier if present (v2.0+)
+            if "classifier" in payload and payload["classifier"] is not None:
+                self._classifier = payload["classifier"]
+                logger.info(
+                    "Dual model (IF + RF) loaded ← %s", self.model_path
+                )
+            else:
+                logger.info(
+                    "Isolation Forest loaded ← %s  (RF not in file — will "
+                    "be trained on next fit())", self.model_path
+                )
         except Exception as exc:
             logger.warning("Could not load anomaly model: %s", exc)
             self._is_fitted = False
@@ -589,8 +797,8 @@ if __name__ == "__main__":
     from detector import BorderDetector
     from preprocessing import extract_frames
 
-    print("Border Surveillance AI — Anomaly Detection Module")
-    print("=" * 55)
+    print("Border Surveillance AI — Anomaly Detection Module (IF + RF)")
+    print("=" * 60)
 
     video = (
         sys.argv[1] if len(sys.argv) > 1
@@ -615,24 +823,30 @@ if __name__ == "__main__":
         if not anomaly._is_fitted:
             ready = anomaly.collect_baseline(fr_dict)
             if ready and not anomaly._is_fitted:
-                print(f"  Baseline collected. Fitting Isolation Forest...")
+                print("  Baseline collected. Fitting Isolation Forest + Random Forest...")
                 anomaly.fit()
-                print("  Model fitted ✅")
+                print("  Both models fitted ✅")
             continue
 
         result = anomaly.score(fr_dict)
         scored_results.append(result)
 
         if result.alert_level == "critical":
-            print(f"  🚨 CRITICAL  frame={result.frame_id:5d}  "
-                  f"score={result.anomaly_score:.3f}  reasons={result.reasons}")
+            print(
+                f"  🚨 CRITICAL  frame={result.frame_id:5d}  "
+                f"score={result.anomaly_score:.3f}  "
+                f"RF={result.rf_label}  reasons={result.reasons}"
+            )
         elif result.alert_level == "high":
-            print(f"  ⚠️  HIGH     frame={result.frame_id:5d}  "
-                  f"score={result.anomaly_score:.3f}  reasons={result.reasons}")
+            print(
+                f"  ⚠️  HIGH     frame={result.frame_id:5d}  "
+                f"score={result.anomaly_score:.3f}  "
+                f"RF={result.rf_label}  reasons={result.reasons}"
+            )
 
-    print("\n" + "=" * 55)
+    print("\n" + "=" * 60)
     print("ANOMALY SUMMARY")
-    print("=" * 55)
+    print("=" * 60)
     summary = anomaly.get_summary(scored_results)
     for k, v in summary.items():
         print(f"  {k:<25} {v}")
